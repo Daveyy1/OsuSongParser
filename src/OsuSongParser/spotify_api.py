@@ -2,8 +2,10 @@ import time
 
 from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
+from spotipy.exceptions import SpotifyException
 
 _SCOPES = "playlist-modify-private playlist-modify-public"
+_api_call_count = 0
 
 
 def get_client(client_id: str, client_secret: str, redirect_uri: str) -> Spotify:
@@ -17,18 +19,37 @@ def get_client(client_id: str, client_secret: str, redirect_uri: str) -> Spotify
     return Spotify(auth_manager=auth)
 
 
-def _search(sp: Spotify, q: str, limit: int = 5) -> list[dict]:
-    time.sleep(1)
-    result = sp.search(q=q, type="track", limit=limit)
-    return result["tracks"]["items"] if result and result.get("tracks") else []
+def _search(sp: Spotify, q: str, limit: int = 5, max_retries: int = 3) -> list[dict]:
+    """Search with adaptive rate limiting and exponential backoff."""
+    global _api_call_count
+
+    for attempt in range(max_retries):
+        try:
+            # Adaptive delay: minimal on first attempt, exponential backoff on retries
+            if attempt > 0:
+                delay = min(2 ** attempt, 10)  # Exponential backoff, max 10s
+                time.sleep(delay)
+            else:
+                time.sleep(0.2)  # Minimal delay for first attempt
+
+            _api_call_count += 1
+            result = sp.search(q=q, type="track", limit=limit)
+            return result["tracks"]["items"] if result and result.get("tracks") else []
+
+        except SpotifyException as e:
+            if e.http_status == 429:  # Rate limited
+                retry_after = int(e.headers.get("Retry-After", 5))
+                if attempt < max_retries - 1:
+                    time.sleep(retry_after)
+                    continue
+            raise
+
+    return []
 
 
 def search_track(sp: Spotify, title: str, artist: str) -> list[dict]:
-    """Search Spotify with a strict query first, falling back to a broad query."""
-    tracks = _search(sp, f'track:"{title}" artist:"{artist}"')
-    if not tracks:
-        tracks = _search(sp, f"{artist} {title}")
-    return tracks
+    """Search Spotify with strict query only."""
+    return _search(sp, f'track:"{title}" artist:"{artist}"')
 
 
 def find_playlist(sp: Spotify, name: str) -> str | None:
@@ -81,3 +102,14 @@ def add_tracks(sp: Spotify, playlist_id: str, uris: list[str]) -> None:
     """Add tracks to a playlist in batches of 25 (To not get rate-limited immediately by Spotify)."""
     for i in range(0, len(uris), 25):
         sp.playlist_add_items(playlist_id, uris[i : i + 25])
+
+
+def get_api_call_count() -> int:
+    """Return the total number of Spotify API search calls made."""
+    return _api_call_count
+
+
+def reset_api_call_count() -> None:
+    """Reset the API call counter to zero."""
+    global _api_call_count
+    _api_call_count = 0

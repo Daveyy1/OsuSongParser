@@ -37,18 +37,24 @@ def match_song(sp: Spotify, song: OsuSong) -> SpotifyMatch:
     norm_title = normalize_for_comparison(romanized_title)
     norm_artist = normalize_for_comparison(romanized_artist)
 
-    # Step 1: romanized/ASCII search (strict → broad internally)
+    # Step 1: romanized/ASCII search (strict query only)
     candidates_by_uri: dict[str, dict] = {
         c["uri"]: c for c in search_track(sp, romanized_title, romanized_artist)
     }
 
-    # Step 2: unicode search — only escalate if romanized returned nothing AND strings differ.
-    # Avoids doubling API calls for songs that already have a romanized match.
+    # Step 2: unicode search — only if romanized returned nothing AND strings are significantly different.
+    # More selective to minimize API calls while still catching Japanese/Korean/Chinese titles.
     unicode_title = clean_title(song.title)
     unicode_artist = song.artist
-    if not candidates_by_uri and (
-        unicode_title != romanized_title or unicode_artist != romanized_artist
-    ):
+    should_try_unicode = (
+        not candidates_by_uri
+        and (
+            abs(len(unicode_title) - len(romanized_title)) > 3  # Significant length difference
+            or any(ord(c) > 127 for c in unicode_title)  # Contains non-ASCII characters
+            or any(ord(c) > 127 for c in unicode_artist)
+        )
+    )
+    if should_try_unicode:
         for c in search_track(sp, unicode_title, unicode_artist):
             candidates_by_uri.setdefault(c["uri"], c)
 

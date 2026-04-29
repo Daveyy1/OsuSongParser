@@ -22,7 +22,7 @@ from OsuSongParser.osu_api import (
     songs_from_most_played,
     songs_from_scores,
 )
-from OsuSongParser.spotify_api import get_client
+from OsuSongParser.spotify_api import get_client, get_api_call_count, reset_api_call_count
 
 app = typer.Typer(help="osu! Song Exporter + Spotify Playlist Sync")
 console = Console()
@@ -236,9 +236,13 @@ def match_spotify(
 
     matches: list = []
     cache_hits = 0
+    CACHE_SAVE_INTERVAL = 50  # Save cache every 50 songs to reduce disk I/O
 
     def _save_cache() -> None:
         cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    # Reset API call counter at the start of matching
+    reset_api_call_count()
 
     with Progress(
         SpinnerColumn(),
@@ -248,7 +252,7 @@ def match_spotify(
         console=console,
     ) as progress:
         task = progress.add_task("Matching against Spotify...", total=len(songs))
-        for song in songs:
+        for idx, song in enumerate(songs):
             key = song_key(song)
             if key in cache:
                 cached = cache[key]
@@ -274,15 +278,22 @@ def match_spotify(
                     "confidence": match.confidence,
                     "status": match.status,
                 }
-                _save_cache()
+                # Batch save: only save every N songs to reduce disk I/O
+                if (idx + 1) % CACHE_SAVE_INTERVAL == 0:
+                    _save_cache()
             matches.append(match)
             progress.advance(task)
 
+    # Final cache save after loop completes
+    _save_cache()
+
     new_lookups = len(matches) - cache_hits
+    api_calls = get_api_call_count()
     console.print(
         f"Cache: [cyan]{cache_hits} hits[/cyan], [green]{new_lookups} new lookups[/green] "
         f"(cache saved to [cyan]{cache_path}[/cyan])"
     )
+    console.print(f"API calls: [cyan]{api_calls}[/cyan] (avg {api_calls / new_lookups:.1f} per lookup)" if new_lookups > 0 else f"API calls: [cyan]{api_calls}[/cyan]")
 
     matched = sum(1 for m in matches if m.status == "matched")
     review = sum(1 for m in matches if m.status == "review")
