@@ -3,7 +3,7 @@ import json
 from dataclasses import asdict
 from pathlib import Path
 
-from osu_spotify_sync.models import OsuSong, SpotifyMatch
+from OsuSongParser.models import OsuSong, SpotifyMatch
 
 _OSU_SONG_FIELDS = [
     "source", "artist", "title", "artist_romanized", "title_romanized",

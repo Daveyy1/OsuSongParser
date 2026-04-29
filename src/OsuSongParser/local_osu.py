@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from osu_spotify_sync.models import OsuSong
+from OsuSongParser.models import OsuSong
 
 
 def _parse_osu_file(path: Path) -> dict[str, str]:

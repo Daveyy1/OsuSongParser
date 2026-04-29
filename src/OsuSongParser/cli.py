@@ -4,9 +4,16 @@ from typing import Optional
 import typer
 from rich.console import Console
 
-from osu_spotify_sync.export import export_songs_csv, export_songs_json
-from osu_spotify_sync.local_osu import scan_local as _scan
-from osu_spotify_sync.osu_api import (
+from OsuSongParser.export import (
+    export_matches_csv,
+    export_songs_csv,
+    export_songs_json,
+    export_unmatched_csv,
+)
+from OsuSongParser.local_osu import scan_local as _scan
+from OsuSongParser.matching import match_songs
+from OsuSongParser.models import OsuSong
+from OsuSongParser.osu_api import (
     BEATMAPSET_TYPES,
     SCORE_API_CAPS,
     OsuApiClient,
@@ -14,6 +21,7 @@ from osu_spotify_sync.osu_api import (
     songs_from_most_played,
     songs_from_scores,
 )
+from OsuSongParser.spotify_api import get_client
 
 app = typer.Typer(help="osu! Song Exporter + Spotify Playlist Sync")
 console = Console()
@@ -45,17 +53,15 @@ def scan_local(
 
 @app.command("fetch-osu")
 def fetch_osu(
-    user: str = typer.Option(..., "--user", help="osu! username (@name) or numeric user ID"),
     type_: str = typer.Option(
         ..., "--type",
         help="recent | best | firsts | favourite | most_played",
     ),
-    out: Path = typer.Option(..., "--out", help="Output CSV path"),
     limit: int = typer.Option(500, "--limit", help="Maximum number of results to fetch"),
     mode: str = typer.Option("osu", "--mode", help="Ruleset: osu | taiko | fruits | mania"),
 ) -> None:
     """Fetch osu! activity from the API and export to CSV."""
-    from osu_spotify_sync import config
+    from OsuSongParser import config
 
     valid_types = set(SCORE_API_CAPS) | BEATMAPSET_TYPES
     if type_ not in valid_types:
@@ -66,6 +72,12 @@ def fetch_osu(
         console.print("[red]Error:[/red] OSU_CLIENT_ID and OSU_CLIENT_SECRET must be set in .env")
         raise typer.Exit(1)
 
+    user = config.OSU_USER_ID
+    if not user:
+        console.print("[red]Error:[/red] OSU_USER_ID must be set in .env")
+        raise typer.Exit(1)
+
+    out = Path(f"exports/{type_}.csv")
     client = OsuApiClient(config.OSU_CLIENT_ID, config.OSU_CLIENT_SECRET)
 
     console.print(f"Fetching [cyan]{type_}[/cyan] for user [cyan]{user}[/cyan] ...")
@@ -116,15 +128,80 @@ def fetch_osu(
 
 @app.command("match-spotify")
 def match_spotify(
-    input_: Path = typer.Option(..., "--input", help="osu! songs CSV produced by scan-local or fetch-osu"),
-    out: Path = typer.Option(Path("exports/spotify_matches.csv"), "--out", help="Matches output CSV path"),
+    input_: Path = typer.Option(..., "--input", help="osu! songs CSV from scan-local or fetch-osu"),
+    out: Path = typer.Option(Path("exports/spotify_matches.csv"), "--out", help="Matched results CSV"),
     unmatched_out: Path = typer.Option(
-        Path("exports/spotify_unmatched.csv"), "--unmatched-out", help="Unmatched output CSV path"
+        Path("exports/spotify_unmatched.csv"), "--unmatched-out", help="Unmatched results CSV"
     ),
 ) -> None:
-    """Match osu! songs against Spotify and produce matched/unmatched CSVs."""
-    console.print("[yellow]match-spotify not implemented yet.[/yellow]")
-    raise typer.Exit(1)
+    """Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
+    import csv
+    from OsuSongParser import config
+
+    if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
+        console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
+        raise typer.Exit(1)
+
+    if not input_.exists():
+        console.print(f"[red]Error:[/red] input file not found: {input_}")
+        raise typer.Exit(1)
+
+    with input_.open(encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        songs: list[OsuSong] = []
+        for row in reader:
+            songs.append(OsuSong(
+                source=row.get("source", ""),
+                artist=row.get("artist", ""),
+                title=row.get("title", ""),
+                artist_romanized=row.get("artist_romanized") or None,
+                title_romanized=row.get("title_romanized") or None,
+                beatmapset_id=int(row["beatmapset_id"]) if row.get("beatmapset_id") else None,
+                beatmap_id=int(row["beatmap_id"]) if row.get("beatmap_id") else None,
+                audio_filename=row.get("audio_filename") or None,
+                creator=row.get("creator") or None,
+                difficulty=row.get("difficulty") or None,
+                tags=row.get("tags") or None,
+                osu_beatmapset_url=row.get("osu_beatmapset_url") or None,
+                osu_beatmap_url=row.get("osu_beatmap_url") or None,
+            ))
+
+    console.print(f"Loaded [green]{len(songs)}[/green] songs from [cyan]{input_}[/cyan]")
+    console.print("Authenticating with Spotify (browser window may open) ...")
+
+    try:
+        sp = get_client(
+            config.SPOTIPY_CLIENT_ID,
+            config.SPOTIPY_CLIENT_SECRET,
+            config.SPOTIPY_REDIRECT_URI,
+        )
+    except Exception as exc:
+        console.print(f"[red]Spotify auth error:[/red] {exc}")
+        raise typer.Exit(1)
+
+    console.print("Matching songs against Spotify ...")
+    matches = match_songs(sp, songs)
+
+    songs_by_key = {
+        (str(s.beatmapset_id) if s.beatmapset_id else f"{s.artist}|{s.title}"): s
+        for s in songs
+    }
+
+    matched = sum(1 for m in matches if m.status == "matched")
+    review = sum(1 for m in matches if m.status == "review")
+    unmatched = sum(1 for m in matches if m.status == "unmatched")
+
+    console.print(
+        f"Results: [green]{matched} matched[/green], "
+        f"[yellow]{review} review[/yellow], "
+        f"[red]{unmatched} unmatched[/red]"
+    )
+
+    export_matches_csv(matches, songs_by_key, out)
+    console.print(f"Matches written to [cyan]{out}[/cyan]")
+
+    export_unmatched_csv(matches, songs_by_key, unmatched_out)
+    console.print(f"Unmatched written to [cyan]{unmatched_out}[/cyan]")
 
 
 @app.command("create-playlist")

@@ -2,7 +2,7 @@ import time
 
 import requests
 
-from osu_spotify_sync.models import OsuSong
+from OsuSongParser.models import OsuSong
 
 _BASE_URL = "https://osu.ppy.sh/api/v2"
 _TOKEN_URL = "https://osu.ppy.sh/oauth/token"
@@ -62,9 +62,14 @@ class OsuApiClient:
         api_cap = SCORE_API_CAPS.get(type_, 100)
         params: dict = {"mode": mode, "limit": min(limit, api_cap)}
         if type_ == "recent":
-            params["include_fails"] = 1
+            params["include_fails"] = "1"
         result = self._get(f"/users/{user}/scores/{type_}", params=params)
-        return result if isinstance(result, list) else []
+        if isinstance(result, list):
+            return result
+        # Recent scores endpoint may return {"scores": [...], "cursor_string": ...}
+        if isinstance(result, dict):
+            return result.get("scores", [])
+        return []
 
     def get_beatmapsets(
         self,
@@ -144,18 +149,24 @@ def _dedup(songs: list[OsuSong]) -> list[OsuSong]:
 
 
 def songs_from_scores(scores: list[dict], source: str) -> list[OsuSong]:
-    raw = [
-        _build_song(s.get("beatmapset", {}), source, s.get("beatmap"))
-        for s in scores
-    ]
-    return _dedup([s for s in raw if s is not None])
+    raw = []
+    for s in scores:
+        beatmapset = s.get("beatmapset") or {}
+        beatmap = s.get("beatmap") or {}
+        # Fallback: recent scores may nest beatmapset inside beatmap
+        if not beatmapset and beatmap:
+            beatmapset = beatmap.get("beatmapset") or {}
+        song = _build_song(beatmapset, source, beatmap)
+        if song is not None:
+            raw.append(song)
+    return _dedup(raw)
 
 
 def songs_from_most_played(items: list[dict]) -> list[OsuSong]:
     raw = []
     for item in items:
+        beatmapset = item.get("beatmapset", {})
         beatmap = item.get("beatmap", {})
-        beatmapset = beatmap.get("beatmapset", {})
         song = _build_song(beatmapset, "osu_api_most_played", beatmap)
         if song is not None:
             raw.append(song)

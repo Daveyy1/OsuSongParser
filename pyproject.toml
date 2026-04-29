@@ -1,5 +1,5 @@
 [project]
-name = "osu-spotify-sync"
+name = "OsuSongParser"
 version = "0.1.0"
 description = "Collect osu! song metadata and sync matched tracks to a Spotify playlist."
 requires-python = ">=3.13"
@@ -13,14 +13,14 @@ dependencies = [
 ]
 
 [project.scripts]
-osu-spotify-sync = "osu_spotify_sync.cli:app"
+OsuSongParser = "OsuSongParser.cli:app"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/osu_spotify_sync"]
+packages = ["src/OsuSongParser"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

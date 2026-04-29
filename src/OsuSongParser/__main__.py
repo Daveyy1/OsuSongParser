@@ -1,4 +1,4 @@
-from osu_spotify_sync.cli import app
+from OsuSongParser.cli import app
 
 if __name__ == "__main__":
     app()
