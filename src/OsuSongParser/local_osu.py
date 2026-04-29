@@ -76,6 +76,82 @@ def _dedup_key(song: OsuSong) -> str:
     return f"name:{song.artist.casefold().strip()}|{song.title.casefold().strip()}"
 
 
+def _looks_like_osu_file(text: str) -> bool:
+    """Quick check if file content appears to be an osu beatmap."""
+    return (
+        "osu file format" in text[:100].lower()
+        and "[Metadata]" in text
+        and "BeatmapSetID:" in text
+    )
+
+
+def scan_lazer_files(lazer_root: Path) -> list[OsuSong]:
+    """
+    Scan osu!lazer's hashed files directory for beatmaps.
+
+    Args:
+        lazer_root: Path to osu!lazer root (e.g., C:\\Users\\<name>\\AppData\\Roaming\\osu)
+
+    Returns:
+        List of unique OsuSong objects, deduplicated by beatmapset_id
+    """
+    files_dir = lazer_root / "files"
+
+    if not files_dir.exists():
+        return []
+
+    seen: set[str] = set()
+    results: list[OsuSong] = []
+
+    # Scan all files in the hashed directory
+    for file_path in files_dir.rglob("*"):
+        if not file_path.is_file():
+            continue
+
+        # Try to read as text
+        try:
+            text = file_path.read_text(encoding="utf-8-sig", errors="ignore")
+        except Exception:
+            continue
+
+        # Quick check if this looks like a beatmap file
+        if not _looks_like_osu_file(text):
+            continue
+
+        # Parse the metadata from the text
+        fields: dict[str, str] = {}
+        current_section: str | None = None
+        target_sections = {"[General]", "[Metadata]"}
+
+        for line in text.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("[") and stripped.endswith("]"):
+                current_section = stripped
+                continue
+            if current_section not in target_sections:
+                continue
+            if ":" in stripped:
+                key, _, value = stripped.partition(":")
+                fields[key.strip()] = value.strip()
+
+        # Build the song object
+        song = _build_song(fields)
+        if song is None:
+            continue
+
+        # Deduplicate
+        key = _dedup_key(song)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        # Update source to indicate lazer
+        song.source = "lazer_local"
+        results.append(song)
+
+    return results
+
+
 """Return one OsuSong per unique beatmapset found under songs_path."""
 def scan_local(songs_path: Path) -> list[OsuSong]:
     seen: set[str] = set()

@@ -11,7 +11,7 @@ from OsuSongParser.export import (
     export_songs_json,
     export_unmatched_csv,
 )
-from OsuSongParser.local_osu import scan_local as _scan
+from OsuSongParser.local_osu import scan_local as _scan, scan_lazer_files as _scan_lazer
 from OsuSongParser.matching import match_songs, song_key
 from OsuSongParser.models import OsuSong
 from OsuSongParser.osu_api import (
@@ -42,6 +42,41 @@ def scan_local(
 
     console.print(f"Scanning [cyan]{songs_path}[/cyan] ...")
     songs = _scan(songs_path)
+    console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
+
+    export_songs_csv(songs, out)
+    console.print(f"CSV written to [cyan]{out}[/cyan]")
+
+    if json_out:
+        export_songs_json(songs, json_out)
+        console.print(f"JSON written to [cyan]{json_out}[/cyan]")
+
+
+"""Scan osu!lazer hashed files directory and export metadata to CSV."""
+@app.command("scan-lazer")
+def scan_lazer(
+    lazer_root: Path = typer.Option(
+        ..., "--lazer-root", help="Path to osu!lazer root (e.g., C:\\Users\\<name>\\AppData\\Roaming\\osu)"
+    ),
+    out: Path = typer.Option(Path("exports/lazer_songs.csv"), "--out", help="Output CSV path"),
+    json_out: Optional[Path] = typer.Option(None, "--json-out", help="Optional JSON output path"),
+) -> None:
+
+    if not lazer_root.exists():
+        console.print(f"[red]Error:[/red] lazer root path does not exist: {lazer_root}")
+        raise typer.Exit(1)
+
+    files_dir = lazer_root / "files"
+    if not files_dir.exists():
+        console.print(
+            f"[red]Error:[/red] files directory not found at {files_dir}\n"
+            f"Make sure you're pointing to the osu!lazer root directory."
+        )
+        raise typer.Exit(1)
+
+    console.print(f"Scanning osu!lazer files in [cyan]{files_dir}[/cyan] ...")
+    console.print("[yellow]Note:[/yellow] This may take a while as it scans hashed files...")
+    songs = _scan_lazer(lazer_root)
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
     export_songs_csv(songs, out)
