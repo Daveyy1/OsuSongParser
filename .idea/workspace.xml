@@ -4,15 +4,8 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="Initialize Project: Create files and necessary directories">
-      <change beforePath="$PROJECT_DIR$/.idea/OsuSongParser.iml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/OsuSongParser.iml" afterDir="false" />
+    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="models.py — Wrote the two dataclasses from the PDF verbatim, with one addition: tags: str | None on OsuSong (Issue 5 fix). Everything else is as specified.           &#10;   &#10;  config.py — Loads .env via python-dotenv and exposes all the env vars from Section 9 as typed module-level constants. Nothing fancy — just a single place to import   &#10;  config from instead of sprinkling os.getenv calls across the codebase.&#10;&#10;  local_osu.py — Three functions:&#10;  - _parse_osu_file — reads a .osu file, walks line by line, only collects keys from [General] and [Metadata] sections&#10;  - _build_song — turns the raw key/value dict into an OsuSong. Prefers Unicode fields over ASCII, handles -1 beatmap IDs (osu! uses -1 for &quot;no ID&quot;), builds the osu!&#10;  URLs&#10;  - scan_local — recursively globs for *.osu, deduplicates by BeatmapSetID first, falls back to casefold artist|title key, returns one entry per beatmapset&#10;&#10;  export.py — Four functions for writing the four output files the spec defines: export_songs_csv, export_songs_json, export_matches_csv, export_unmatched_csv. Uses&#10;  dataclasses.asdict to serialize OsuSong cleanly.&#10;&#10;  cli.py — Four commands registered with Typer matching the spec exactly (scan-local, fetch-osu, match-spotify, create-playlist). Only scan-local is wired up. The other&#10;   three print &quot;not implemented yet&quot; and exit with code 1 — they're stubs so the CLI is already discoverable via --help.&#10;&#10;  normalize.py — Just the agreed-upon pattern list for now (no logic yet). The broad r&quot;\[.*?\]&quot; is absent. This file gets its actual implementation in MVP 3 when&#10;  Spotify matching is built.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/cli.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/config.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/export.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/export.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/local_osu.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/local_osu.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/models.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/osu_spotify_sync/normalize.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/osu_spotify_sync/normalize.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -76,7 +69,7 @@
       <option name="presentableId" value="Default" />
       <updated>1777452630141</updated>
       <workItem from="1777452631200" duration="76000" />
-      <workItem from="1777452844067" duration="1594000" />
+      <workItem from="1777452844067" duration="2630000" />
     </task>
     <task id="LOCAL-00001" summary="Initialize Project: Create files and necessary directories">
       <option name="closed" value="true" />
@@ -86,7 +79,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777454016596</updated>
     </task>
-    <option name="localTasksCounter" value="2" />
+    <task id="LOCAL-00002" summary="models.py — Wrote the two dataclasses from the PDF verbatim, with one addition: tags: str | None on OsuSong (Issue 5 fix). Everything else is as specified.           &#10;   &#10;  config.py — Loads .env via python-dotenv and exposes all the env vars from Section 9 as typed module-level constants. Nothing fancy — just a single place to import   &#10;  config from instead of sprinkling os.getenv calls across the codebase.&#10;&#10;  local_osu.py — Three functions:&#10;  - _parse_osu_file — reads a .osu file, walks line by line, only collects keys from [General] and [Metadata] sections&#10;  - _build_song — turns the raw key/value dict into an OsuSong. Prefers Unicode fields over ASCII, handles -1 beatmap IDs (osu! uses -1 for &quot;no ID&quot;), builds the osu!&#10;  URLs&#10;  - scan_local — recursively globs for *.osu, deduplicates by BeatmapSetID first, falls back to casefold artist|title key, returns one entry per beatmapset&#10;&#10;  export.py — Four functions for writing the four output files the spec defines: export_songs_csv, export_songs_json, export_matches_csv, export_unmatched_csv. Uses&#10;  dataclasses.asdict to serialize OsuSong cleanly.&#10;&#10;  cli.py — Four commands registered with Typer matching the spec exactly (scan-local, fetch-osu, match-spotify, create-playlist). Only scan-local is wired up. The other&#10;   three print &quot;not implemented yet&quot; and exit with code 1 — they're stubs so the CLI is already discoverable via --help.&#10;&#10;  normalize.py — Just the agreed-upon pattern list for now (no logic yet). The broad r&quot;\[.*?\]&quot; is absent. This file gets its actual implementation in MVP 3 when&#10;  Spotify matching is built.">
+      <option name="closed" value="true" />
+      <created>1777455001509</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1777455001509</updated>
+    </task>
+    <option name="localTasksCounter" value="3" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -94,6 +95,7 @@
   </component>
   <component name="VcsManagerConfiguration">
     <MESSAGE value="Initialize Project: Create files and necessary directories" />
-    <option name="LAST_COMMIT_MESSAGE" value="Initialize Project: Create files and necessary directories" />
+    <MESSAGE value="models.py — Wrote the two dataclasses from the PDF verbatim, with one addition: tags: str | None on OsuSong (Issue 5 fix). Everything else is as specified.           &#10;   &#10;  config.py — Loads .env via python-dotenv and exposes all the env vars from Section 9 as typed module-level constants. Nothing fancy — just a single place to import   &#10;  config from instead of sprinkling os.getenv calls across the codebase.&#10;&#10;  local_osu.py — Three functions:&#10;  - _parse_osu_file — reads a .osu file, walks line by line, only collects keys from [General] and [Metadata] sections&#10;  - _build_song — turns the raw key/value dict into an OsuSong. Prefers Unicode fields over ASCII, handles -1 beatmap IDs (osu! uses -1 for &quot;no ID&quot;), builds the osu!&#10;  URLs&#10;  - scan_local — recursively globs for *.osu, deduplicates by BeatmapSetID first, falls back to casefold artist|title key, returns one entry per beatmapset&#10;&#10;  export.py — Four functions for writing the four output files the spec defines: export_songs_csv, export_songs_json, export_matches_csv, export_unmatched_csv. Uses&#10;  dataclasses.asdict to serialize OsuSong cleanly.&#10;&#10;  cli.py — Four commands registered with Typer matching the spec exactly (scan-local, fetch-osu, match-spotify, create-playlist). Only scan-local is wired up. The other&#10;   three print &quot;not implemented yet&quot; and exit with code 1 — they're stubs so the CLI is already discoverable via --help.&#10;&#10;  normalize.py — Just the agreed-upon pattern list for now (no logic yet). The broad r&quot;\[.*?\]&quot; is absent. This file gets its actual implementation in MVP 3 when&#10;  Spotify matching is built." />
+    <option name="LAST_COMMIT_MESSAGE" value="models.py — Wrote the two dataclasses from the PDF verbatim, with one addition: tags: str | None on OsuSong (Issue 5 fix). Everything else is as specified.           &#10;   &#10;  config.py — Loads .env via python-dotenv and exposes all the env vars from Section 9 as typed module-level constants. Nothing fancy — just a single place to import   &#10;  config from instead of sprinkling os.getenv calls across the codebase.&#10;&#10;  local_osu.py — Three functions:&#10;  - _parse_osu_file — reads a .osu file, walks line by line, only collects keys from [General] and [Metadata] sections&#10;  - _build_song — turns the raw key/value dict into an OsuSong. Prefers Unicode fields over ASCII, handles -1 beatmap IDs (osu! uses -1 for &quot;no ID&quot;), builds the osu!&#10;  URLs&#10;  - scan_local — recursively globs for *.osu, deduplicates by BeatmapSetID first, falls back to casefold artist|title key, returns one entry per beatmapset&#10;&#10;  export.py — Four functions for writing the four output files the spec defines: export_songs_csv, export_songs_json, export_matches_csv, export_unmatched_csv. Uses&#10;  dataclasses.asdict to serialize OsuSong cleanly.&#10;&#10;  cli.py — Four commands registered with Typer matching the spec exactly (scan-local, fetch-osu, match-spotify, create-playlist). Only scan-local is wired up. The other&#10;   three print &quot;not implemented yet&quot; and exit with code 1 — they're stubs so the CLI is already discoverable via --help.&#10;&#10;  normalize.py — Just the agreed-upon pattern list for now (no logic yet). The broad r&quot;\[.*?\]&quot; is absent. This file gets its actual implementation in MVP 3 when&#10;  Spotify matching is built." />
   </component>
 </project>
