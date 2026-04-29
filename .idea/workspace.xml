@@ -4,8 +4,9 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="Cleanup and remove retries on query to minimize requests">
+    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="added the local search logic, needs testing though">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -90,7 +91,7 @@
       <workItem from="1777452631200" duration="76000" />
       <workItem from="1777452844067" duration="10797000" />
       <workItem from="1777477656801" duration="149000" />
-      <workItem from="1777477849823" duration="2348000" />
+      <workItem from="1777477849823" duration="3607000" />
     </task>
     <task id="LOCAL-00001" summary="Initialize Project: Create files and necessary directories">
       <option name="closed" value="true" />
@@ -148,7 +149,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777464827850</updated>
     </task>
-    <option name="localTasksCounter" value="8" />
+    <task id="LOCAL-00008" summary="added the local search logic, needs testing though">
+      <option name="closed" value="true" />
+      <created>1777484108833</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1777484108833</updated>
+    </task>
+    <option name="localTasksCounter" value="9" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -162,6 +171,7 @@
     <MESSAGE value="App now allows playlist creation in Spotify. Added a cache and request timer to limit api calls to spotify to avoid rate limiting (already happened :( ) Will work on refining this process." />
     <MESSAGE value="added skipping duplicates in playlists to avoid having one song multiple times in the playlist." />
     <MESSAGE value="Cleanup and remove retries on query to minimize requests" />
-    <option name="LAST_COMMIT_MESSAGE" value="Cleanup and remove retries on query to minimize requests" />
+    <MESSAGE value="added the local search logic, needs testing though" />
+    <option name="LAST_COMMIT_MESSAGE" value="added the local search logic, needs testing though" />
   </component>
 </project>
