@@ -287,7 +287,8 @@ def create_playlist(
     import csv as _csv
     from OsuSongParser import config
     from OsuSongParser.spotify_api import (
-        create_playlist as _create_playlist,
+        get_or_create_playlist as _get_or_create_playlist,
+        get_playlist_track_uris as _get_playlist_track_uris,
         add_tracks as _add_tracks,
     )
 
@@ -333,16 +334,30 @@ def create_playlist(
         raise typer.Exit(0)
 
     playlist_name = _PLAYLIST_NAMES.get(source, "OsuMaps")
-    console.print(f"Creating playlist [cyan]{playlist_name}[/cyan] with [green]{len(unique_uris)}[/green] tracks ...")
+    console.print(f"Looking up playlist [cyan]{playlist_name}[/cyan] ...")
     console.print("Authenticating with Spotify (browser window may open) ...")
 
     try:
         sp = get_client(config.SPOTIPY_CLIENT_ID, config.SPOTIPY_CLIENT_SECRET, config.SPOTIPY_REDIRECT_URI)
-        playlist_id = _create_playlist(sp, playlist_name, public=not private)
-        _add_tracks(sp, playlist_id, unique_uris)
+        playlist_id, created = _get_or_create_playlist(sp, playlist_name, public=not private)
+        if created:
+            console.print(f"Created new playlist [cyan]{playlist_name}[/cyan].")
+            new_uris = unique_uris
+        else:
+            console.print(f"Found existing playlist [cyan]{playlist_name}[/cyan] — checking for duplicates ...")
+            existing = _get_playlist_track_uris(sp, playlist_id)
+            new_uris = [u for u in unique_uris if u not in existing]
+            skipped = len(unique_uris) - len(new_uris)
+            if skipped:
+                console.print(f"Skipping [yellow]{skipped}[/yellow] tracks already in the playlist.")
+        if not new_uris:
+            console.print("[yellow]No new tracks to add.[/yellow]")
+            raise typer.Exit(0)
+        console.print(f"Adding [green]{len(new_uris)}[/green] tracks ...")
+        _add_tracks(sp, playlist_id, new_uris)
     except Exception as exc:
         console.print(f"[red]Spotify error:[/red] {exc}")
         raise typer.Exit(1)
 
     playlist_url = f"https://open.spotify.com/playlist/{playlist_id}"
-    console.print(f"[green]Done![/green] Playlist created: [cyan]{playlist_url}[/cyan]")
+    console.print(f"[green]Done![/green] Playlist: [cyan]{playlist_url}[/cyan]")

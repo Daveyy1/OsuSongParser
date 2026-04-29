@@ -41,22 +41,53 @@ def search_track(sp: Spotify, title: str, artist: str) -> list[dict]:
     return tracks
 
 
-def create_playlist(
+def find_playlist(sp: Spotify, name: str) -> str | None:
+    """Return the ID of the first user playlist matching name, or None."""
+    offset = 0
+    while True:
+        page = sp.current_user_playlists(limit=50, offset=offset)
+        for item in page["items"]:
+            if item["name"] == name:
+                return item["id"]
+        if page["next"] is None:
+            return None
+        offset += len(page["items"])
+
+
+def get_or_create_playlist(
     sp: Spotify,
     name: str,
     public: bool = False,
     description: str = "Generated from osu! beatmaps.",
-) -> str:
-    """Create a Spotify playlist and return its ID."""
+) -> tuple[str, bool]:
+    """Return (playlist_id, created) — reuses an existing playlist if found."""
+    existing_id = find_playlist(sp, name)
+    if existing_id:
+        return existing_id, False
     playlist = sp.current_user_playlist_create(
         name=name,
         public=public,
         description=description,
     )
-    return playlist["id"]
+    return playlist["id"], True
+
+
+def get_playlist_track_uris(sp: Spotify, playlist_id: str) -> set[str]:
+    """Return the set of track URIs already in a playlist."""
+    uris: set[str] = set()
+    offset = 0
+    while True:
+        page = sp.playlist_tracks(playlist_id, fields="items(track(uri)),next", limit=100, offset=offset)
+        for item in page["items"]:
+            track = item.get("track")
+            if track and track.get("uri"):
+                uris.add(track["uri"])
+        if page["next"] is None:
+            return uris
+        offset += len(page["items"])
 
 
 def add_tracks(sp: Spotify, playlist_id: str, uris: list[str]) -> None:
-    """Add tracks to a playlist in batches of 100 (Spotify API limit)."""
-    for i in range(0, len(uris), 100):
-        sp.playlist_add_items(playlist_id, uris[i : i + 100])
+    """Add tracks to a playlist in batches of 25 (Spotify API limit)."""
+    for i in range(0, len(uris), 25):
+        sp.playlist_add_items(playlist_id, uris[i : i + 25])
