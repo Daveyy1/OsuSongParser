@@ -67,7 +67,7 @@ def get_playlist_track_uris(sp: Spotify, playlist_id: str) -> set[str]:
     uris: set[str] = set()
     offset = 0
     while True:
-        page = sp.playlist_tracks(playlist_id, fields="items(track(uri)),next", limit=100, offset=offset)
+        page = sp.playlist_items(playlist_id, fields="items(track(uri)),next", limit=100, offset=offset, additional_types=("track",))
         for item in page["items"]:
             track = item.get("track")
             if track and track.get("uri"):
@@ -78,6 +78,6 @@ def get_playlist_track_uris(sp: Spotify, playlist_id: str) -> set[str]:
 
 
 def add_tracks(sp: Spotify, playlist_id: str, uris: list[str]) -> None:
-    """Add tracks to a playlist in batches of 25 (Spotify API limit)."""
+    """Add tracks to a playlist in batches of 25 (To not get rate-limited immediately by Spotify)."""
     for i in range(0, len(uris), 25):
         sp.playlist_add_items(playlist_id, uris[i : i + 25])
