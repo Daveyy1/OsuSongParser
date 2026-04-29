@@ -1,0 +1,1 @@
+# OsuSong and SpotifyMatch dataclasses.
