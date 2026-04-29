@@ -6,12 +6,13 @@ from rich.console import Console
 
 from OsuSongParser.export import (
     export_matches_csv,
+    export_review_csv,
     export_songs_csv,
     export_songs_json,
     export_unmatched_csv,
 )
 from OsuSongParser.local_osu import scan_local as _scan
-from OsuSongParser.matching import match_songs
+from OsuSongParser.matching import match_songs, song_key
 from OsuSongParser.models import OsuSong
 from OsuSongParser.osu_api import (
     BEATMAPSET_TYPES,
@@ -130,13 +131,16 @@ def fetch_osu(
 def match_spotify(
     input_: Path = typer.Option(..., "--input", help="osu! songs CSV from scan-local or fetch-osu"),
     out: Path = typer.Option(Path("exports/spotify_matches.csv"), "--out", help="Matched results CSV"),
+    review_out: Path = typer.Option(Path("exports/spotify_review.csv"), "--review-out", help="Review results CSV"),
     unmatched_out: Path = typer.Option(
         Path("exports/spotify_unmatched.csv"), "--unmatched-out", help="Unmatched results CSV"
     ),
 ) -> None:
     """Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
     import csv
+    import json
     from OsuSongParser import config
+    from OsuSongParser.models import SpotifyMatch
 
     if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
         console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
@@ -179,13 +183,71 @@ def match_spotify(
         console.print(f"[red]Spotify auth error:[/red] {exc}")
         raise typer.Exit(1)
 
-    console.print("Matching songs against Spotify ...")
-    matches = match_songs(sp, songs)
-
     songs_by_key = {
         (str(s.beatmapset_id) if s.beatmapset_id else f"{s.artist}|{s.title}"): s
         for s in songs
     }
+
+    cache_path = Path("exports/spotify_cache.json")
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    cache: dict[str, dict] = {}
+    if cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            cache = {}
+
+    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
+
+    matches: list = []
+    cache_hits = 0
+
+    def _save_cache() -> None:
+        cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task("Matching against Spotify...", total=len(songs))
+        for song in songs:
+            key = song_key(song)
+            if key in cache:
+                cached = cache[key]
+                match = SpotifyMatch(
+                    osu_song_key=key,
+                    spotify_track_id=cached.get("spotify_track_id"),
+                    spotify_uri=cached.get("spotify_uri"),
+                    spotify_url=cached.get("spotify_url"),
+                    matched_artist=cached.get("matched_artist"),
+                    matched_title=cached.get("matched_title"),
+                    confidence=cached.get("confidence", 0.0),
+                    status=cached.get("status", "unmatched"),
+                )
+                cache_hits += 1
+            else:
+                match = next(match_songs(sp, [song]))
+                cache[key] = {
+                    "spotify_track_id": match.spotify_track_id,
+                    "spotify_uri": match.spotify_uri,
+                    "spotify_url": match.spotify_url,
+                    "matched_artist": match.matched_artist,
+                    "matched_title": match.matched_title,
+                    "confidence": match.confidence,
+                    "status": match.status,
+                }
+                _save_cache()
+            matches.append(match)
+            progress.advance(task)
+
+    new_lookups = len(matches) - cache_hits
+    console.print(
+        f"Cache: [cyan]{cache_hits} hits[/cyan], [green]{new_lookups} new lookups[/green] "
+        f"(cache saved to [cyan]{cache_path}[/cyan])"
+    )
 
     matched = sum(1 for m in matches if m.status == "matched")
     review = sum(1 for m in matches if m.status == "review")
@@ -198,18 +260,89 @@ def match_spotify(
     )
 
     export_matches_csv(matches, songs_by_key, out)
-    console.print(f"Matches written to [cyan]{out}[/cyan]")
+    console.print(f"Matched written to [cyan]{out}[/cyan]")
+
+    export_review_csv(matches, songs_by_key, review_out)
+    console.print(f"Review written to [cyan]{review_out}[/cyan]")
 
     export_unmatched_csv(matches, songs_by_key, unmatched_out)
     console.print(f"Unmatched written to [cyan]{unmatched_out}[/cyan]")
 
 
+_PLAYLIST_NAMES: dict[str, str] = {
+    "osu_api_most_played": "MostPlayedOsuMaps",
+    "osu_api_best": "BestOsuMaps",
+    "osu_api_recent": "RecentOsuMaps",
+    "local": "LocalOsuMaps",
+}
+
+
 @app.command("create-playlist")
 def create_playlist(
-    matches: Path = typer.Option(..., "--matches", help="Spotify matches CSV"),
-    playlist_name: str = typer.Option("osu! imports", "--playlist-name", help="Name for the Spotify playlist"),
-    private: bool = typer.Option(False, "--private/--public", help="Create playlist as private"),
+    matches: Optional[Path] = typer.Option(None, "--matches", help="Matched songs CSV (spotify_matches.csv)"),
+    review: Optional[Path] = typer.Option(None, "--review", help="Review songs CSV (spotify_review.csv)"),
+    private: bool = typer.Option(True, "--private/--public", help="Create as private playlist"),
 ) -> None:
-    """Create a Spotify playlist from high-confidence matched tracks."""
-    console.print("[yellow]create-playlist not implemented yet.[/yellow]")
-    raise typer.Exit(1)
+    """Create a Spotify playlist from matched and/or review songs."""
+    import csv as _csv
+    from OsuSongParser import config
+    from OsuSongParser.spotify_api import (
+        create_playlist as _create_playlist,
+        add_tracks as _add_tracks,
+    )
+
+    if not matches and not review:
+        console.print("[red]Error:[/red] provide at least one of --matches or --review")
+        raise typer.Exit(1)
+
+    if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
+        console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
+        raise typer.Exit(1)
+
+    def read_uris(path: Path) -> tuple[list[str], str]:
+        """Return (uris, source) from a match/review CSV."""
+        uris: list[str] = []
+        source = ""
+        with path.open(encoding="utf-8") as f:
+            for row in _csv.DictReader(f):
+                uri = row.get("spotify_uri", "").strip()
+                if uri:
+                    uris.append(uri)
+                if not source:
+                    source = row.get("source", "")
+        return uris, source
+
+    all_uris: list[str] = []
+    source = ""
+
+    for path in filter(None, [matches, review]):
+        if not path.exists():
+            console.print(f"[red]Error:[/red] file not found: {path}")
+            raise typer.Exit(1)
+        uris, src = read_uris(path)
+        all_uris.extend(uris)
+        if not source:
+            source = src
+
+    # Deduplicate while preserving order
+    seen: set[str] = set()
+    unique_uris = [u for u in all_uris if not (u in seen or seen.add(u))]  # type: ignore[func-returns-value]
+
+    if not unique_uris:
+        console.print("[yellow]No Spotify URIs found in the provided files — nothing to add.[/yellow]")
+        raise typer.Exit(0)
+
+    playlist_name = _PLAYLIST_NAMES.get(source, "OsuMaps")
+    console.print(f"Creating playlist [cyan]{playlist_name}[/cyan] with [green]{len(unique_uris)}[/green] tracks ...")
+    console.print("Authenticating with Spotify (browser window may open) ...")
+
+    try:
+        sp = get_client(config.SPOTIPY_CLIENT_ID, config.SPOTIPY_CLIENT_SECRET, config.SPOTIPY_REDIRECT_URI)
+        playlist_id = _create_playlist(sp, playlist_name, public=not private)
+        _add_tracks(sp, playlist_id, unique_uris)
+    except Exception as exc:
+        console.print(f"[red]Spotify error:[/red] {exc}")
+        raise typer.Exit(1)
+
+    playlist_url = f"https://open.spotify.com/playlist/{playlist_id}"
+    console.print(f"[green]Done![/green] Playlist created: [cyan]{playlist_url}[/cyan]")

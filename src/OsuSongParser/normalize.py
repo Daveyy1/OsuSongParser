@@ -4,13 +4,19 @@ import unicodedata
 # Stripped from titles before Spotify search.
 # The broad r"\[.*?\]" is intentionally excluded — it removes legitimate title content.
 _NOISE_PATTERNS: list[re.Pattern[str]] = [
+    # TV size markers
     re.compile(r"\(TV\s*[Ss]ize\)", re.IGNORECASE),
     re.compile(r"\[TV\s*[Ss]ize\]", re.IGNORECASE),
-    re.compile(r"\(Short\s*Ver\.?\)", re.IGNORECASE),
-    re.compile(r"\(Game\s*Ver\.?\)", re.IGNORECASE),
-    re.compile(r"\(Cut\s*Ver\.?\)", re.IGNORECASE),
+    # Any parenthetical ending in "Ver." or "Version" — catches Rock Ver., Sped Up & Cut Ver., Full Ver., etc.
+    re.compile(r"\([^)]*\bver(?:sion)?\.?\)", re.IGNORECASE),
+    # feat. in parentheses or bare
     re.compile(r"\(feat\.[^)]*\)", re.IGNORECASE),
-    re.compile(r"\s*feat\.\s+\S+", re.IGNORECASE),
+    re.compile(r"\s*feat\.\s+[^(\[]+", re.IGNORECASE),
+    # Standalone edit/remix/mix tags that don't belong in the Spotify search
+    re.compile(r"\(sped[\s\-]*up\)", re.IGNORECASE),
+    re.compile(r"\(slowed(?:\s*[\+&]\s*reverb)?\)", re.IGNORECASE),
+    re.compile(r"\(nightcore(?:\s*edit)?\)", re.IGNORECASE),
+    re.compile(r"\((?:full\s+)?extended(?:\s+mix)?\)", re.IGNORECASE),
 ]
 
 
@@ -28,12 +34,16 @@ def clean_title(title: str) -> str:
 
 
 def normalize_for_comparison(text: str) -> str:
-    """Lowercase, strip noise, collapse whitespace, and drop non-ASCII for fuzzy comparison."""
-    text = clean_title(text)
-    text = _to_ascii(text)
-    text = text.lower()
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    """Lowercase, strip noise, collapse whitespace for fuzzy comparison.
+
+    Tries ASCII normalization first. Falls back to lowercased unicode for strings
+    that are fully non-ASCII (e.g. Japanese), so they still compare meaningfully.
+    """
+    cleaned = clean_title(text)
+    ascii_version = re.sub(r"\s+", " ", _to_ascii(cleaned).lower()).strip()
+    if ascii_version:
+        return ascii_version
+    return re.sub(r"\s+", " ", cleaned.lower()).strip()
 
 
 def best_title(title: str, title_romanized: str | None) -> str:

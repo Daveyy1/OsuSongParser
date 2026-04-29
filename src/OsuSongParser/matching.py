@@ -2,7 +2,7 @@ from rapidfuzz import fuzz
 from spotipy import Spotify
 
 from OsuSongParser.models import OsuSong, SpotifyMatch
-from OsuSongParser.normalize import best_artist, best_title, normalize_for_comparison
+from OsuSongParser.normalize import best_artist, best_title, clean_title, normalize_for_comparison
 from OsuSongParser.spotify_api import search_track
 
 _MATCH_THRESHOLD = 85.0
@@ -22,7 +22,7 @@ def _score(osu_title: str, osu_artist: str, candidate: dict) -> float:
     return 0.65 * title_sim + 0.35 * artist_sim
 
 
-def _song_key(song: OsuSong) -> str:
+def song_key(song: OsuSong) -> str:
     if song.beatmapset_id is not None:
         return str(song.beatmapset_id)
     return f"{song.artist}|{song.title}"
@@ -30,14 +30,30 @@ def _song_key(song: OsuSong) -> str:
 
 def match_song(sp: Spotify, song: OsuSong) -> SpotifyMatch:
     """Match a single OsuSong against Spotify and return a SpotifyMatch."""
-    search_title = best_title(song.title, song.title_romanized)
-    search_artist = best_artist(song.artist, song.artist_romanized)
+    # Clean noise from titles before sending to Spotify (better first-hit rate)
+    romanized_title = clean_title(best_title(song.title, song.title_romanized))
+    romanized_artist = best_artist(song.artist, song.artist_romanized)
 
-    norm_title = normalize_for_comparison(search_title)
-    norm_artist = normalize_for_comparison(search_artist)
+    norm_title = normalize_for_comparison(romanized_title)
+    norm_artist = normalize_for_comparison(romanized_artist)
 
-    candidates = search_track(sp, search_title, search_artist)
-    key = _song_key(song)
+    # Step 1: romanized/ASCII search (strict → broad internally)
+    candidates_by_uri: dict[str, dict] = {
+        c["uri"]: c for c in search_track(sp, romanized_title, romanized_artist)
+    }
+
+    # Step 2: unicode search — only escalate if romanized returned nothing AND strings differ.
+    # Avoids doubling API calls for songs that already have a romanized match.
+    unicode_title = clean_title(song.title)
+    unicode_artist = song.artist
+    if not candidates_by_uri and (
+        unicode_title != romanized_title or unicode_artist != romanized_artist
+    ):
+        for c in search_track(sp, unicode_title, unicode_artist):
+            candidates_by_uri.setdefault(c["uri"], c)
+
+    candidates = list(candidates_by_uri.values())
+    key = song_key(song)
 
     if not candidates:
         return SpotifyMatch(
@@ -73,6 +89,7 @@ def match_song(sp: Spotify, song: OsuSong) -> SpotifyMatch:
     )
 
 
-def match_songs(sp: Spotify, songs: list[OsuSong]) -> list[SpotifyMatch]:
-    """Match a list of OsuSong entries and return all SpotifyMatch results."""
-    return [match_song(sp, song) for song in songs]
+def match_songs(sp: Spotify, songs: list[OsuSong]):
+    """Yield one SpotifyMatch per OsuSong so callers can show progress."""
+    for song in songs:
+        yield match_song(sp, song)
