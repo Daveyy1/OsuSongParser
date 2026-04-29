@@ -9,8 +9,8 @@ _MATCH_THRESHOLD = 85.0
 _REVIEW_THRESHOLD = 70.0
 
 
+"""Score a Spotify candidate against normalized osu! metadata (0–100)."""
 def _score(osu_title: str, osu_artist: str, candidate: dict) -> float:
-    """Score a Spotify candidate against normalized osu! metadata (0–100)."""
     spotify_title = normalize_for_comparison(candidate.get("name", ""))
     spotify_artist = normalize_for_comparison(
         " ".join(a["name"] for a in candidate.get("artists", []))
@@ -28,8 +28,8 @@ def song_key(song: OsuSong) -> str:
     return f"{song.artist}|{song.title}"
 
 
+"""Match a single OsuSong against Spotify and return a SpotifyMatch."""
 def match_song(sp: Spotify, song: OsuSong) -> SpotifyMatch:
-    """Match a single OsuSong against Spotify and return a SpotifyMatch."""
     # Clean noise from titles before sending to Spotify (better first-hit rate)
     romanized_title = clean_title(best_title(song.title, song.title_romanized))
     romanized_artist = best_artist(song.artist, song.artist_romanized)
@@ -89,7 +89,7 @@ def match_song(sp: Spotify, song: OsuSong) -> SpotifyMatch:
     )
 
 
+"""Yield one SpotifyMatch per OsuSong so callers can show progress."""
 def match_songs(sp: Spotify, songs: list[OsuSong]):
-    """Yield one SpotifyMatch per OsuSong so callers can show progress."""
     for song in songs:
         yield match_song(sp, song)

@@ -76,8 +76,8 @@ def _dedup_key(song: OsuSong) -> str:
     return f"name:{song.artist.casefold().strip()}|{song.title.casefold().strip()}"
 
 
+"""Return one OsuSong per unique beatmapset found under songs_path."""
 def scan_local(songs_path: Path) -> list[OsuSong]:
-    """Return one OsuSong per unique beatmapset found under songs_path."""
     seen: set[str] = set()
     results: list[OsuSong] = []
 

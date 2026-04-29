@@ -28,13 +28,13 @@ app = typer.Typer(help="osu! Song Exporter + Spotify Playlist Sync")
 console = Console()
 
 
+"""Scan local osu! Songs folder and export metadata to CSV."""
 @app.command("scan-local")
 def scan_local(
     songs_path: Path = typer.Option(..., "--songs-path", help="Path to osu! Songs folder"),
     out: Path = typer.Option(Path("exports/osu_songs.csv"), "--out", help="Output CSV path"),
     json_out: Optional[Path] = typer.Option(None, "--json-out", help="Optional JSON output path"),
 ) -> None:
-    """Scan local osu! Songs folder and export metadata to CSV (and optionally JSON)."""
 
     if not songs_path.exists():
         console.print(f"[red]Error:[/red] songs path does not exist: {songs_path}")
@@ -52,6 +52,7 @@ def scan_local(
         console.print(f"JSON written to [cyan]{json_out}[/cyan]")
 
 
+"""Fetch osu! activity from the API and export to CSV."""
 @app.command("fetch-osu")
 def fetch_osu(
     type_: str = typer.Option(
@@ -61,7 +62,6 @@ def fetch_osu(
     limit: int = typer.Option(500, "--limit", help="Maximum number of results to fetch"),
     mode: str = typer.Option("osu", "--mode", help="Ruleset: osu | taiko | fruits | mania"),
 ) -> None:
-    """Fetch osu! activity from the API and export to CSV."""
     from OsuSongParser import config
 
     valid_types = set(SCORE_API_CAPS) | BEATMAPSET_TYPES
@@ -127,6 +127,7 @@ def fetch_osu(
     console.print(f"CSV written to [cyan]{out}[/cyan]")
 
 
+"""Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
 @app.command("match-spotify")
 def match_spotify(
     input_: Path = typer.Option(..., "--input", help="osu! songs CSV from scan-local or fetch-osu"),
@@ -136,7 +137,6 @@ def match_spotify(
         Path("exports/spotify_unmatched.csv"), "--unmatched-out", help="Unmatched results CSV"
     ),
 ) -> None:
-    """Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
     import csv
     import json
     from OsuSongParser import config
@@ -277,13 +277,13 @@ _PLAYLIST_NAMES: dict[str, str] = {
 }
 
 
+"""Create a Spotify playlist from matched and/or review songs."""
 @app.command("create-playlist")
 def create_playlist(
     matches: Optional[Path] = typer.Option(None, "--matches", help="Matched songs CSV (spotify_matches.csv)"),
     review: Optional[Path] = typer.Option(None, "--review", help="Review songs CSV (spotify_review.csv)"),
     private: bool = typer.Option(True, "--private/--public", help="Create as private playlist"),
 ) -> None:
-    """Create a Spotify playlist from matched and/or review songs."""
     import csv as _csv
     from OsuSongParser import config
     from OsuSongParser.spotify_api import (

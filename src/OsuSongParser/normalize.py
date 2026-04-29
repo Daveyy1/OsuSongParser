@@ -20,25 +20,25 @@ _NOISE_PATTERNS: list[re.Pattern[str]] = [
 ]
 
 
+"""Decompose unicode characters and drop non-ASCII, e.g. café -> cafe."""
 def _to_ascii(text: str) -> str:
-    """Decompose unicode characters and drop non-ASCII, e.g. café -> cafe."""
     return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode("ascii")
 
 
+"""Remove osu!/anime metadata noise from a title for Spotify search."""
 def clean_title(title: str) -> str:
-    """Remove osu!/anime metadata noise from a title for Spotify search."""
     result = title
     for pattern in _NOISE_PATTERNS:
         result = pattern.sub("", result)
     return result.strip()
 
 
-def normalize_for_comparison(text: str) -> str:
-    """Lowercase, strip noise, collapse whitespace for fuzzy comparison.
+"""Lowercase, strip noise, collapse whitespace for fuzzy comparison.
 
     Tries ASCII normalization first. Falls back to lowercased unicode for strings
     that are fully non-ASCII (e.g. Japanese), so they still compare meaningfully.
-    """
+"""
+def normalize_for_comparison(text: str) -> str:
     cleaned = clean_title(text)
     ascii_version = re.sub(r"\s+", " ", _to_ascii(cleaned).lower()).strip()
     if ascii_version:
@@ -46,20 +46,20 @@ def normalize_for_comparison(text: str) -> str:
     return re.sub(r"\s+", " ", cleaned.lower()).strip()
 
 
-def best_title(title: str, title_romanized: str | None) -> str:
-    """Return the best title to use for Spotify search.
+"""Return the best title to use for Spotify search.
 
     Prefer the romanized version if it exists and is ASCII-safe,
     otherwise fall back to the unicode title.
-    """
+"""
+def best_title(title: str, title_romanized: str | None) -> str:
     if title_romanized and title_romanized.strip():
         return title_romanized
     ascii_attempt = _to_ascii(title)
     return ascii_attempt if ascii_attempt.strip() else title
 
 
+"""Return the best artist string to use for Spotify search."""
 def best_artist(artist: str, artist_romanized: str | None) -> str:
-    """Return the best artist string to use for Spotify search."""
     if artist_romanized and artist_romanized.strip():
         return artist_romanized
     ascii_attempt = _to_ascii(artist)
