@@ -403,11 +403,9 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
     console.print(f"[green]Done![/green] Playlist: [cyan]{playlist_url}[/cyan]")
 
 
-def app() -> None:
-    """Main interactive CLI application."""
-    console.print("\n[bold magenta]osu! Song Exporter + Spotify Playlist Sync[/bold magenta]\n")
-
-    # Step 1: Ask if stable or lazer
+def scan_workflow() -> None:
+    """Workflow for scanning osu! songs."""
+    # Ask if stable or lazer
     osu_version = Prompt.ask(
         "Are you playing osu! stable or osu! lazer?",
         choices=["s", "l"],
@@ -415,7 +413,7 @@ def app() -> None:
         show_default=False
     ).lower()
 
-    # Step 2: Ask if local or account-linked
+    # Ask if local or account-linked
     scan_type = Prompt.ask(
         "Do you want to scan your [cyan]local maps[/cyan] or the ones [cyan]linked to your account[/cyan]?",
         choices=["local", "account"],
@@ -423,7 +421,7 @@ def app() -> None:
         show_default=False
     )
 
-    # Step 3: Process based on scan type
+    # Process based on scan type
     if scan_type == "local":
         if osu_version == "s":
             output_csv = scan_local_stable()
@@ -448,37 +446,47 @@ def app() -> None:
         api_type = type_map[api_type_input]
         output_csv = fetch_from_osu_api(api_type)
 
-    # Step 4: Process complete, ask about Spotify linking
-    console.print(f"\n[green]Process complete![/green]")
+    console.print(f"\n[green]Scan complete![/green]")
     console.print(f"Output CSV: [cyan]{output_csv}[/cyan]")
 
-    if not Confirm.ask("\nDo you want to link this to your Spotify account?", default=True, show_default=False):
-        console.print("\n[green]All done! Goodbye![/green]")
-        return
+    # Ask if they want to continue with matching
+    if Confirm.ask("\nDo you want to match these songs with Spotify now?", default=True, show_default=False):
+        matched_csv, review_csv, unmatched_csv = match_with_spotify(output_csv)
 
-    # Step 5: Spotify linking flow
-    # Find all available CSV files in exports directory
+        # Ask if they want to add to playlist
+        if Confirm.ask("\nDo you want to add the matched songs to your Spotify playlist?", default=True, show_default=False):
+            add_to_spotify_playlist(matched_csv, review_csv)
+            console.print("\n[green]All done! Enjoy your playlist![/green]")
+        else:
+            console.print("\n[green]All done! Your matched songs are saved.[/green]")
+    else:
+        console.print("\n[green]All done! You can match these songs later.[/green]")
+
+
+def match_workflow() -> None:
+    """Workflow for matching existing osu! song CSVs with Spotify."""
     exports_dir = Path("exports")
     if not exports_dir.exists():
-        console.print("[red]Error:[/red] No exports directory found")
+        console.print("[red]Error:[/red] No exports directory found. Please scan some songs first.")
         return
 
+    # Find osu! song CSVs (not Spotify result CSVs)
     available_csvs = [
         f for f in exports_dir.glob("*.csv")
         if not ("spotify_matches" in f.name or "spotify_review" in f.name or "spotify_unmatched" in f.name)
     ]
 
     if not available_csvs:
-        console.print("[yellow]No available CSV files to process[/yellow]")
+        console.print("[yellow]No osu! song CSV files found. Please scan some songs first.[/yellow]")
         return
 
-    console.print("\n[bold cyan]Available outputs:[/bold cyan]")
+    console.print("\n[bold cyan]Available osu! song files:[/bold cyan]")
     for idx, csv_file in enumerate(available_csvs, 1):
         console.print(f"  {idx}. {csv_file.name}")
 
-    # Ask which file(s) to process
+    # Ask which file(s) to match
     choice = Prompt.ask(
-        "\nWhich output do you want to scan for on Spotify? (enter number or 'all')",
+        "\nWhich file do you want to match with Spotify? (enter number or 'all')",
         default="1",
         show_default=False
     )
@@ -498,14 +506,96 @@ def app() -> None:
             console.print("[red]Invalid input[/red]")
             return
 
-    # Process each selected file
+    # Match with Spotify
+    matched_files: list[tuple[Path, Path, Path]] = []
     for csv_file in files_to_process:
-        console.print(f"\n[bold]Processing {csv_file.name}[/bold]")
-
-        # Match with Spotify
+        console.print(f"\n[bold]Matching {csv_file.name}[/bold]")
         matched_csv, review_csv, unmatched_csv = match_with_spotify(csv_file)
+        matched_files.append((matched_csv, review_csv, unmatched_csv))
 
-        # Add to Spotify playlist
+    console.print(f"\n[green]Matching complete![/green]")
+
+    # Ask if they want to add to playlist
+    if Confirm.ask("\nDo you want to add the matched songs to your Spotify playlist?", default=True, show_default=False):
+        for matched_csv, review_csv, unmatched_csv in matched_files:
+            add_to_spotify_playlist(matched_csv, review_csv)
+        console.print("\n[green]All done! Enjoy your playlists![/green]")
+    else:
+        console.print("\n[green]All done! Your matched songs are saved.[/green]")
+
+
+def playlist_workflow() -> None:
+    """Workflow for adding matched songs to Spotify playlists."""
+    exports_dir = Path("exports")
+    if not exports_dir.exists():
+        console.print("[red]Error:[/red] No exports directory found. Please match some songs first.")
+        return
+
+    # Find matched Spotify CSVs
+    matched_csvs = list(exports_dir.glob("*spotify_matches.csv"))
+
+    if not matched_csvs:
+        console.print("[yellow]No matched Spotify files found. Please match some songs first.[/yellow]")
+        return
+
+    console.print("\n[bold cyan]Available matched files:[/bold cyan]")
+    for idx, csv_file in enumerate(matched_csvs, 1):
+        # Also check for corresponding review file
+        review_file = csv_file.parent / csv_file.name.replace("_matches.csv", "_review.csv")
+        console.print(f"  {idx}. {csv_file.name}")
+        if review_file.exists():
+            console.print(f"      (with review file: {review_file.name})")
+
+    # Ask which file(s) to add
+    choice = Prompt.ask(
+        "\nWhich matched file do you want to add to a playlist? (enter number or 'all')",
+        default="1",
+        show_default=False
+    )
+
+    files_to_process: list[Path] = []
+    if choice.lower() == "all":
+        files_to_process = matched_csvs
+    else:
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(matched_csvs):
+                files_to_process = [matched_csvs[idx]]
+            else:
+                console.print("[red]Invalid selection[/red]")
+                return
+        except ValueError:
+            console.print("[red]Invalid input[/red]")
+            return
+
+    # Add to playlist
+    for matched_csv in files_to_process:
+        review_csv = matched_csv.parent / matched_csv.name.replace("_matches.csv", "_review.csv")
+        review_csv = review_csv if review_csv.exists() else None
         add_to_spotify_playlist(matched_csv, review_csv)
 
     console.print("\n[green]All done! Enjoy your playlists![/green]")
+
+
+def app() -> None:
+    """Main interactive CLI application."""
+    console.print("\n[bold magenta]osu! Song Exporter + Spotify Playlist Sync[/bold magenta]\n")
+
+    # Ask what the user wants to do
+    action = Prompt.ask(
+        "What would you like to do?\n"
+        "  [cyan]s[/cyan] - Scan osu! songs (local or from API)\n"
+        "  [cyan]m[/cyan] - Match saved songs with Spotify\n"
+        "  [cyan]p[/cyan] - Add matched songs to Spotify playlist\n"
+        "Choose an option",
+        choices=["s", "m", "p"],
+        default="s",
+        show_default=False
+    ).lower()
+
+    if action == "s":
+        scan_workflow()
+    elif action == "m":
+        match_workflow()
+    elif action == "p":
+        playlist_workflow()

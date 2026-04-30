@@ -4,7 +4,7 @@ from spotipy import Spotify
 from spotipy.oauth2 import SpotifyOAuth
 from spotipy.exceptions import SpotifyException
 
-_SCOPES = "playlist-modify-private playlist-modify-public"
+_SCOPES = "playlist-read-private playlist-modify-private playlist-modify-public"
 _api_call_count = 0
 
 

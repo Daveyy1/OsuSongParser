@@ -4,11 +4,11 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="improved spotify api calling to reduce requests">
+    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="changed the cli such that a user is walked through his choices instead of having to run a cli command.">
+      <change beforePath="$PROJECT_DIR$/.cache" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pyproject.toml" beforeDir="false" afterPath="$PROJECT_DIR$/pyproject.toml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/OsuSongParser/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/cli.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/uv.lock" beforeDir="false" afterPath="$PROJECT_DIR$/uv.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/OsuSongParser/spotify_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/spotify_api.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -55,6 +55,7 @@
   "keyToString": {
     "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
     "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Python.OsuSongParser.__main__.executor": "Run",
     "Python.__main__.executor": "Run",
     "RunOnceActivity.MCP Project settings loaded": "true",
     "RunOnceActivity.ShowReadmeOnStart": "true",
@@ -123,7 +124,7 @@
       <workItem from="1777452844067" duration="10797000" />
       <workItem from="1777477656801" duration="149000" />
       <workItem from="1777477849823" duration="7105000" />
-      <workItem from="1777544432405" duration="1158000" />
+      <workItem from="1777544432405" duration="3590000" />
     </task>
     <task id="LOCAL-00001" summary="Initialize Project: Create files and necessary directories">
       <option name="closed" value="true" />
@@ -205,7 +206,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777492321729</updated>
     </task>
-    <option name="localTasksCounter" value="11" />
+    <task id="LOCAL-00011" summary="changed the cli such that a user is walked through his choices instead of having to run a cli command.">
+      <option name="closed" value="true" />
+      <created>1777545815656</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1777545815656</updated>
+    </task>
+    <option name="localTasksCounter" value="12" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -222,9 +231,11 @@
     <MESSAGE value="added the local search logic, needs testing though" />
     <MESSAGE value="created .env.example such that users can just fill in their credentials" />
     <MESSAGE value="improved spotify api calling to reduce requests" />
-    <option name="LAST_COMMIT_MESSAGE" value="improved spotify api calling to reduce requests" />
+    <MESSAGE value="changed the cli such that a user is walked through his choices instead of having to run a cli command." />
+    <option name="LAST_COMMIT_MESSAGE" value="changed the cli such that a user is walked through his choices instead of having to run a cli command." />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
+    <SUITE FILE_PATH="coverage/OsuSongParser$OsuSongParser___main__.coverage" NAME="OsuSongParser.__main__ Coverage Results" MODIFIED="1777557304390" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/OsuSongParser$__main__.coverage" NAME="__main__ Coverage Results" MODIFIED="1777545100540" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/OsuSongParser" />
   </component>
 </project>
