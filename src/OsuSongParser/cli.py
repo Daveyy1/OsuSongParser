@@ -43,11 +43,41 @@ def scan_local_stable() -> Path:
         console.print(f"[red]Error:[/red] songs path does not exist: {songs_path}")
         sys.exit(1)
 
-    console.print(f"Scanning [cyan]{songs_path}[/cyan] ...")
-    songs = _scan(songs_path)
+    # Count files first for progress bar
+    console.print(f"Counting .osu files in [cyan]{songs_path}[/cyan] ...")
+    osu_files = list(songs_path.rglob("*.osu"))
+    total_files = len(osu_files)
+    console.print(f"Found {total_files} .osu files. Scanning...")
+
+    # Scan with progress bar
+    from OsuSongParser.local_osu import _parse_osu_file, _build_song, _dedup_key
+    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
+
+    seen: set[str] = set()
+    songs: list[OsuSong] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+        refresh_per_second=10,
+    ) as progress:
+        task = progress.add_task("Scanning beatmaps...", total=total_files)
+        for osu_file in sorted(osu_files):
+            fields = _parse_osu_file(osu_file)
+            song = _build_song(fields)
+            if song is not None:
+                key = _dedup_key(song)
+                if key not in seen:
+                    seen.add(key)
+                    songs.append(song)
+            progress.advance(task)
+
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
-    out = Path("exports/local_stable_songs.csv")
+    out = Path("exports/scans/local_stable_songs.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     export_songs_csv(songs, out)
     console.print(f"CSV written to [cyan]{out}[/cyan]")
@@ -78,12 +108,46 @@ def scan_local_lazer() -> Path:
         )
         sys.exit(1)
 
-    console.print(f"Scanning osu!lazer files in [cyan]{files_dir}[/cyan] ...")
+    # Count files first for progress bar
+    console.print(f"Counting files in [cyan]{files_dir}[/cyan] ...")
+    all_files = [f for f in files_dir.rglob("*") if f.is_file()]
+    total_files = len(all_files)
+    console.print(f"Found {total_files} files. Scanning...")
     console.print("[yellow]Note:[/yellow] This may take a while as it scans hashed files...")
-    songs = _scan_lazer(lazer_root)
+
+    # Scan with progress bar
+    from OsuSongParser.local_osu import _parse_osu_file, _build_song, _dedup_key
+    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
+
+    seen: set[str] = set()
+    songs: list[OsuSong] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+        refresh_per_second=10,
+    ) as progress:
+        task = progress.add_task("Scanning lazer files...", total=total_files)
+        for file_path in all_files:
+            try:
+                fields = _parse_osu_file(file_path)
+                song = _build_song(fields)
+                if song is not None:
+                    key = _dedup_key(song)
+                    if key not in seen:
+                        seen.add(key)
+                        songs.append(song)
+            except Exception:
+                # Skip files that can't be parsed
+                pass
+            progress.advance(task)
+
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
-    out = Path("exports/local_lazer_songs.csv")
+    out = Path("exports/scans/local_lazer_songs.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     export_songs_csv(songs, out)
     console.print(f"CSV written to [cyan]{out}[/cyan]")
@@ -108,7 +172,7 @@ def fetch_from_osu_api(type_: str) -> Path:
 
     limit = 500
     mode = "osu"
-    out = Path(f"exports/{type_}.csv")
+    out = Path(f"exports/scans/{type_}.csv")
     out.parent.mkdir(parents=True, exist_ok=True)
     client = OsuApiClient(config.OSU_CLIENT_ID, config.OSU_CLIENT_SECRET)
 
@@ -168,9 +232,9 @@ def match_with_spotify(input_: Path) -> tuple[Path, Path, Path]:
 
     # Generate output file paths based on input file name
     input_stem = input_.stem
-    out = Path(f"exports/{input_stem}_spotify_matches.csv")
-    review_out = Path(f"exports/{input_stem}_spotify_review.csv")
-    unmatched_out = Path(f"exports/{input_stem}_spotify_unmatched.csv")
+    out = Path(f"exports/spotify/matched/{input_stem}_spotify_matches.csv")
+    review_out = Path(f"exports/spotify/review/{input_stem}_spotify_review.csv")
+    unmatched_out = Path(f"exports/spotify/unmatched/{input_stem}_spotify_unmatched.csv")
 
     if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
         console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
@@ -227,59 +291,48 @@ def match_with_spotify(input_: Path) -> tuple[Path, Path, Path]:
         except (json.JSONDecodeError, OSError):
             cache = {}
 
-    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
-
     matches: list = []
     cache_hits = 0
-    CACHE_SAVE_INTERVAL = 50  # Save cache every 50 songs to reduce disk I/O
+    CACHE_SAVE_INTERVAL = 50
 
     def _save_cache() -> None:
         cache_path.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # Reset API call counter at the start of matching
     reset_api_call_count()
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task("Matching against Spotify...", total=len(songs))
-        for idx, song in enumerate(songs):
-            key = song_key(song)
-            if key in cache:
-                cached = cache[key]
-                match = SpotifyMatch(
-                    osu_song_key=key,
-                    spotify_track_id=cached.get("spotify_track_id"),
-                    spotify_uri=cached.get("spotify_uri"),
-                    spotify_url=cached.get("spotify_url"),
-                    matched_artist=cached.get("matched_artist"),
-                    matched_title=cached.get("matched_title"),
-                    confidence=cached.get("confidence", 0.0),
-                    status=cached.get("status", "unmatched"),
-                )
-                cache_hits += 1
-            else:
-                match = next(match_songs(sp, [song]))
-                cache[key] = {
-                    "spotify_track_id": match.spotify_track_id,
-                    "spotify_uri": match.spotify_uri,
-                    "spotify_url": match.spotify_url,
-                    "matched_artist": match.matched_artist,
-                    "matched_title": match.matched_title,
-                    "confidence": match.confidence,
-                    "status": match.status,
-                }
-                # Batch save: only save every N songs to reduce disk I/O
-                if (idx + 1) % CACHE_SAVE_INTERVAL == 0:
-                    _save_cache()
-            matches.append(match)
-            progress.advance(task)
+    console.print(f"Matching [green]{len(songs)}[/green] songs against Spotify...")
+    for idx, song in enumerate(songs):
+        key = song_key(song)
+        if key in cache:
+            cached = cache[key]
+            match = SpotifyMatch(
+                osu_song_key=key,
+                spotify_track_id=cached.get("spotify_track_id"),
+                spotify_uri=cached.get("spotify_uri"),
+                spotify_url=cached.get("spotify_url"),
+                matched_artist=cached.get("matched_artist"),
+                matched_title=cached.get("matched_title"),
+                confidence=cached.get("confidence", 0.0),
+                status=cached.get("status", "unmatched"),
+            )
+            cache_hits += 1
+        else:
+            match = next(match_songs(sp, [song]))
+            cache[key] = {
+                "spotify_track_id": match.spotify_track_id,
+                "spotify_uri": match.spotify_uri,
+                "spotify_url": match.spotify_url,
+                "matched_artist": match.matched_artist,
+                "matched_title": match.matched_title,
+                "confidence": match.confidence,
+                "status": match.status,
+            }
+            if (idx + 1) % CACHE_SAVE_INTERVAL == 0:
+                _save_cache()
+        matches.append(match)
+        label = f"{song.artist} - {song.title}"
+        console.print(f"  [{idx+1}/{len(songs)}] {label[:70]}")
 
-    # Final cache save after loop completes
     _save_cache()
 
     new_lookups = len(matches) - cache_hits
@@ -393,8 +446,16 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
         if not new_uris:
             console.print("[yellow]No new tracks to add.[/yellow]")
             return
-        console.print(f"Adding [green]{len(new_uris)}[/green] tracks ...")
-        _add_tracks(sp, playlist_id, new_uris)
+
+        from OsuSongParser.spotify_api import _get_rate_limiter
+
+        rate_limiter = _get_rate_limiter()
+
+        console.print(f"Adding [green]{len(new_uris)}[/green] tracks to [cyan]{playlist_name}[/cyan]...")
+        for idx, uri in enumerate(new_uris):
+            rate_limiter.wait_if_needed()
+            sp.playlist_add_items(playlist_id, [uri])
+            console.print(f"  [{idx+1}/{len(new_uris)}] added")
     except Exception as exc:
         console.print(f"[red]Spotify error:[/red] {exc}")
         sys.exit(1)
@@ -465,16 +526,12 @@ def scan_workflow() -> None:
 
 def match_workflow() -> None:
     """Workflow for matching existing osu! song CSVs with Spotify."""
-    exports_dir = Path("exports")
-    if not exports_dir.exists():
-        console.print("[red]Error:[/red] No exports directory found. Please scan some songs first.")
+    scans_dir = Path("exports/scans")
+    if not scans_dir.exists():
+        console.print("[red]Error:[/red] No scans directory found. Please scan some songs first.")
         return
 
-    # Find osu! song CSVs (not Spotify result CSVs)
-    available_csvs = [
-        f for f in exports_dir.glob("*.csv")
-        if not ("spotify_matches" in f.name or "spotify_review" in f.name or "spotify_unmatched" in f.name)
-    ]
+    available_csvs = list(scans_dir.glob("*.csv"))
 
     if not available_csvs:
         console.print("[yellow]No osu! song CSV files found. Please scan some songs first.[/yellow]")
@@ -526,13 +583,13 @@ def match_workflow() -> None:
 
 def playlist_workflow() -> None:
     """Workflow for adding matched songs to Spotify playlists."""
-    exports_dir = Path("exports")
-    if not exports_dir.exists():
-        console.print("[red]Error:[/red] No exports directory found. Please match some songs first.")
+    matched_dir = Path("exports/spotify/matched")
+    review_dir = Path("exports/spotify/review")
+    if not matched_dir.exists():
+        console.print("[red]Error:[/red] No matched files directory found. Please match some songs first.")
         return
 
-    # Find matched Spotify CSVs
-    matched_csvs = list(exports_dir.glob("*spotify_matches.csv"))
+    matched_csvs = list(matched_dir.glob("*.csv"))
 
     if not matched_csvs:
         console.print("[yellow]No matched Spotify files found. Please match some songs first.[/yellow]")
@@ -540,8 +597,7 @@ def playlist_workflow() -> None:
 
     console.print("\n[bold cyan]Available matched files:[/bold cyan]")
     for idx, csv_file in enumerate(matched_csvs, 1):
-        # Also check for corresponding review file
-        review_file = csv_file.parent / csv_file.name.replace("_matches.csv", "_review.csv")
+        review_file = review_dir / csv_file.name.replace("_matches.csv", "_review.csv")
         console.print(f"  {idx}. {csv_file.name}")
         if review_file.exists():
             console.print(f"      (with review file: {review_file.name})")
@@ -570,7 +626,7 @@ def playlist_workflow() -> None:
 
     # Add to playlist
     for matched_csv in files_to_process:
-        review_csv = matched_csv.parent / matched_csv.name.replace("_matches.csv", "_review.csv")
+        review_csv = review_dir / matched_csv.name.replace("_matches.csv", "_review.csv")
         review_csv = review_csv if review_csv.exists() else None
         add_to_spotify_playlist(matched_csv, review_csv)
 
