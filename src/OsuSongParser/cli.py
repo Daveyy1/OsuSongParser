@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Optional
+import sys
 
-import typer
 from rich.console import Console
+from rich.prompt import Prompt, Confirm
 
 from OsuSongParser.export import (
     export_matches_csv,
@@ -24,47 +25,50 @@ from OsuSongParser.osu_api import (
 )
 from OsuSongParser.spotify_api import get_client, get_api_call_count, reset_api_call_count
 
-app = typer.Typer(help="osu! Song Exporter + Spotify Playlist Sync")
 console = Console()
 
 
-"""Scan local osu! Songs folder and export metadata to CSV."""
-@app.command("scan-local")
-def scan_local(
-    songs_path: Path = typer.Option(..., "--songs-path", help="Path to osu! Songs folder"),
-    out: Path = typer.Option(Path("exports/osu_songs.csv"), "--out", help="Output CSV path"),
-    json_out: Optional[Path] = typer.Option(None, "--json-out", help="Optional JSON output path"),
-) -> None:
+def scan_local_stable() -> Path:
+    """Scan local osu! stable Songs folder and export metadata to CSV."""
+    console.print("\n[bold cyan]Scanning osu! stable local songs[/bold cyan]")
+
+    default_path = Path.home() / "AppData" / "Local" / "osu!" / "Songs"
+    songs_path_str = Prompt.ask(
+        "Enter path to osu! Songs folder, if the listed folder is the correct one, press enter.",
+        default=str(default_path) if default_path.exists() else ""
+    )
+    songs_path = Path(songs_path_str)
 
     if not songs_path.exists():
         console.print(f"[red]Error:[/red] songs path does not exist: {songs_path}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     console.print(f"Scanning [cyan]{songs_path}[/cyan] ...")
     songs = _scan(songs_path)
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
+    out = Path("exports/local_stable_songs.csv")
+    out.parent.mkdir(parents=True, exist_ok=True)
     export_songs_csv(songs, out)
     console.print(f"CSV written to [cyan]{out}[/cyan]")
 
-    if json_out:
-        export_songs_json(songs, json_out)
-        console.print(f"JSON written to [cyan]{json_out}[/cyan]")
+    return out
 
 
-"""Scan osu!lazer hashed files directory and export metadata to CSV."""
-@app.command("scan-lazer")
-def scan_lazer(
-    lazer_root: Path = typer.Option(
-        ..., "--lazer-root", help="Path to osu!lazer root (e.g., C:\\Users\\<name>\\AppData\\Roaming\\osu)"
-    ),
-    out: Path = typer.Option(Path("exports/lazer_songs.csv"), "--out", help="Output CSV path"),
-    json_out: Optional[Path] = typer.Option(None, "--json-out", help="Optional JSON output path"),
-) -> None:
+def scan_local_lazer() -> Path:
+    """Scan osu!lazer hashed files directory and export metadata to CSV."""
+    console.print("\n[bold cyan]Scanning osu! lazer local songs[/bold cyan]")
+
+    default_path = Path.home() / "AppData" / "Roaming" / "osu"
+    lazer_root_str = Prompt.ask(
+        "Enter path to osu!lazer root folder, if the listed one is the correct one, press enter.",
+        default=str(default_path) if default_path.exists() else ""
+    )
+    lazer_root = Path(lazer_root_str)
 
     if not lazer_root.exists():
         console.print(f"[red]Error:[/red] lazer root path does not exist: {lazer_root}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     files_dir = lazer_root / "files"
     if not files_dir.exists():
@@ -72,48 +76,40 @@ def scan_lazer(
             f"[red]Error:[/red] files directory not found at {files_dir}\n"
             f"Make sure you're pointing to the osu!lazer root directory."
         )
-        raise typer.Exit(1)
+        sys.exit(1)
 
     console.print(f"Scanning osu!lazer files in [cyan]{files_dir}[/cyan] ...")
     console.print("[yellow]Note:[/yellow] This may take a while as it scans hashed files...")
     songs = _scan_lazer(lazer_root)
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
+    out = Path("exports/local_lazer_songs.csv")
+    out.parent.mkdir(parents=True, exist_ok=True)
     export_songs_csv(songs, out)
     console.print(f"CSV written to [cyan]{out}[/cyan]")
 
-    if json_out:
-        export_songs_json(songs, json_out)
-        console.print(f"JSON written to [cyan]{json_out}[/cyan]")
+    return out
 
 
-"""Fetch osu! activity from the API and export to CSV."""
-@app.command("fetch-osu")
-def fetch_osu(
-    type_: str = typer.Option(
-        ..., "--type",
-        help="recent | best | firsts | favourite | most_played",
-    ),
-    limit: int = typer.Option(500, "--limit", help="Maximum number of results to fetch"),
-    mode: str = typer.Option("osu", "--mode", help="Ruleset: osu | taiko | fruits | mania"),
-) -> None:
+def fetch_from_osu_api(type_: str) -> Path:
+    """Fetch osu! activity from the API and export to CSV."""
     from OsuSongParser import config
 
-    valid_types = set(SCORE_API_CAPS) | BEATMAPSET_TYPES
-    if type_ not in valid_types:
-        console.print(f"[red]Error:[/red] unknown type '{type_}'. Choose from: {', '.join(sorted(valid_types))}")
-        raise typer.Exit(1)
+    console.print(f"\n[bold cyan]Fetching {type_} from osu! API[/bold cyan]")
 
     if not config.OSU_CLIENT_ID or not config.OSU_CLIENT_SECRET:
         console.print("[red]Error:[/red] OSU_CLIENT_ID and OSU_CLIENT_SECRET must be set in .env")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     user = config.OSU_USER_ID
     if not user:
         console.print("[red]Error:[/red] OSU_USER_ID must be set in .env")
-        raise typer.Exit(1)
+        sys.exit(1)
 
+    limit = 500
+    mode = "osu"
     out = Path(f"exports/{type_}.csv")
+    out.parent.mkdir(parents=True, exist_ok=True)
     client = OsuApiClient(config.OSU_CLIENT_ID, config.OSU_CLIENT_SECRET)
 
     console.print(f"Fetching [cyan]{type_}[/cyan] for user [cyan]{user}[/cyan] ...")
@@ -138,8 +134,7 @@ def fetch_osu(
             )
             if count >= limit:
                 console.print(
-                    f"[yellow]Result count hit the limit of {limit}. "
-                    f"Pass --limit {limit * 2} if you want more.[/yellow]"
+                    f"[yellow]Result count hit the limit of {limit}.[/yellow]"
                 )
         else:
             raw = client.get_beatmapsets(user, type_, limit=limit)
@@ -151,39 +146,39 @@ def fetch_osu(
             )
             if count >= limit:
                 console.print(
-                    f"[yellow]Result count hit the limit of {limit}. "
-                    f"Pass --limit {limit * 2} if you want more.[/yellow]"
+                    f"[yellow]Result count hit the limit of {limit}.[/yellow]"
                 )
     except Exception as exc:
         console.print(f"[red]API error:[/red] {exc}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     export_songs_csv(songs, out)
     console.print(f"CSV written to [cyan]{out}[/cyan]")
 
+    return out
 
-"""Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
-@app.command("match-spotify")
-def match_spotify(
-    input_: Path = typer.Option(..., "--input", help="osu! songs CSV from scan-local or fetch-osu"),
-    out: Path = typer.Option(Path("exports/spotify_matches.csv"), "--out", help="Matched results CSV"),
-    review_out: Path = typer.Option(Path("exports/spotify_review.csv"), "--review-out", help="Review results CSV"),
-    unmatched_out: Path = typer.Option(
-        Path("exports/spotify_unmatched.csv"), "--unmatched-out", help="Unmatched results CSV"
-    ),
-) -> None:
+
+def match_with_spotify(input_: Path) -> tuple[Path, Path, Path]:
+    """Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
+    console.print(f"\n[bold cyan]Matching songs with Spotify[/bold cyan]")
     import csv
     import json
     from OsuSongParser import config
     from OsuSongParser.models import SpotifyMatch
 
+    # Generate output file paths based on input file name
+    input_stem = input_.stem
+    out = Path(f"exports/{input_stem}_spotify_matches.csv")
+    review_out = Path(f"exports/{input_stem}_spotify_review.csv")
+    unmatched_out = Path(f"exports/{input_stem}_spotify_unmatched.csv")
+
     if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
         console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     if not input_.exists():
         console.print(f"[red]Error:[/red] input file not found: {input_}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     with input_.open(encoding="utf-8") as f:
         reader = csv.DictReader(f)
@@ -216,7 +211,7 @@ def match_spotify(
         )
     except Exception as exc:
         console.print(f"[red]Spotify auth error:[/red] {exc}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     songs_by_key = {
         (str(s.beatmapset_id) if s.beatmapset_id else f"{s.artist}|{s.title}"): s
@@ -314,6 +309,8 @@ def match_spotify(
     export_unmatched_csv(matches, songs_by_key, unmatched_out)
     console.print(f"Unmatched written to [cyan]{unmatched_out}[/cyan]")
 
+    return out, review_out, unmatched_out
+
 
 _PLAYLIST_NAMES: dict[str, str] = {
     "osu_api_most_played": "MostPlayedOsuMaps",
@@ -323,13 +320,10 @@ _PLAYLIST_NAMES: dict[str, str] = {
 }
 
 
-"""Create a Spotify playlist from matched and/or review songs."""
-@app.command("create-playlist")
-def create_playlist(
-    matches: Optional[Path] = typer.Option(None, "--matches", help="Matched songs CSV (spotify_matches.csv)"),
-    review: Optional[Path] = typer.Option(None, "--review", help="Review songs CSV (spotify_review.csv)"),
-    private: bool = typer.Option(True, "--private/--public", help="Create as private playlist"),
-) -> None:
+def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> None:
+    """Create a Spotify playlist from matched and/or review songs."""
+    console.print(f"\n[bold cyan]Adding songs to Spotify playlist[/bold cyan]")
+    private = True
     import csv as _csv
     from OsuSongParser import config
     from OsuSongParser.spotify_api import (
@@ -339,12 +333,12 @@ def create_playlist(
     )
 
     if not matches and not review:
-        console.print("[red]Error:[/red] provide at least one of --matches or --review")
-        raise typer.Exit(1)
+        console.print("[red]Error:[/red] provide at least one matched/review CSV file")
+        sys.exit(1)
 
     if not config.SPOTIPY_CLIENT_ID or not config.SPOTIPY_CLIENT_SECRET:
         console.print("[red]Error:[/red] SPOTIPY_CLIENT_ID and SPOTIPY_CLIENT_SECRET must be set in .env")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     def read_uris(path: Path) -> tuple[list[str], str]:
         """Return (uris, source) from a match/review CSV."""
@@ -365,7 +359,7 @@ def create_playlist(
     for path in filter(None, [matches, review]):
         if not path.exists():
             console.print(f"[red]Error:[/red] file not found: {path}")
-            raise typer.Exit(1)
+            sys.exit(1)
         uris, src = read_uris(path)
         all_uris.extend(uris)
         if not source:
@@ -377,7 +371,7 @@ def create_playlist(
 
     if not unique_uris:
         console.print("[yellow]No Spotify URIs found in the provided files — nothing to add.[/yellow]")
-        raise typer.Exit(0)
+        return
 
     playlist_name = _PLAYLIST_NAMES.get(source, "OsuMaps")
     console.print(f"Looking up playlist [cyan]{playlist_name}[/cyan] ...")
@@ -398,12 +392,120 @@ def create_playlist(
                 console.print(f"Skipping [yellow]{skipped}[/yellow] tracks already in the playlist.")
         if not new_uris:
             console.print("[yellow]No new tracks to add.[/yellow]")
-            raise typer.Exit(0)
+            return
         console.print(f"Adding [green]{len(new_uris)}[/green] tracks ...")
         _add_tracks(sp, playlist_id, new_uris)
     except Exception as exc:
         console.print(f"[red]Spotify error:[/red] {exc}")
-        raise typer.Exit(1)
+        sys.exit(1)
 
     playlist_url = f"https://open.spotify.com/playlist/{playlist_id}"
     console.print(f"[green]Done![/green] Playlist: [cyan]{playlist_url}[/cyan]")
+
+
+def app() -> None:
+    """Main interactive CLI application."""
+    console.print("\n[bold magenta]osu! Song Exporter + Spotify Playlist Sync[/bold magenta]\n")
+
+    # Step 1: Ask if stable or lazer
+    osu_version = Prompt.ask(
+        "Are you playing osu! stable or osu! lazer?",
+        choices=["s", "l"],
+        default="l",
+        show_default=False
+    ).lower()
+
+    # Step 2: Ask if local or account-linked
+    scan_type = Prompt.ask(
+        "Do you want to scan your [cyan]local maps[/cyan] or the ones [cyan]linked to your account[/cyan]?",
+        choices=["local", "account"],
+        default="local",
+        show_default=False
+    )
+
+    # Step 3: Process based on scan type
+    if scan_type == "local":
+        if osu_version == "s":
+            output_csv = scan_local_stable()
+        else:
+            output_csv = scan_local_lazer()
+    else:
+        # Ask which type of account data
+        api_type_input = Prompt.ask(
+            "Which type do you want? [cyan]b[/cyan]est scores, [cyan]r[/cyan]ecent, [cyan]f[/cyan]avorites, or [cyan]m[/cyan]ost played?",
+            choices=["b", "r", "f", "m"],
+            default="b",
+            show_default=False
+        ).lower()
+
+        # Map input to API type
+        type_map = {
+            "b": "best",
+            "r": "recent",
+            "f": "favourite",
+            "m": "most_played"
+        }
+        api_type = type_map[api_type_input]
+        output_csv = fetch_from_osu_api(api_type)
+
+    # Step 4: Process complete, ask about Spotify linking
+    console.print(f"\n[green]Process complete![/green]")
+    console.print(f"Output CSV: [cyan]{output_csv}[/cyan]")
+
+    if not Confirm.ask("\nDo you want to link this to your Spotify account?", default=True, show_default=False):
+        console.print("\n[green]All done! Goodbye![/green]")
+        return
+
+    # Step 5: Spotify linking flow
+    # Find all available CSV files in exports directory
+    exports_dir = Path("exports")
+    if not exports_dir.exists():
+        console.print("[red]Error:[/red] No exports directory found")
+        return
+
+    available_csvs = [
+        f for f in exports_dir.glob("*.csv")
+        if not ("spotify_matches" in f.name or "spotify_review" in f.name or "spotify_unmatched" in f.name)
+    ]
+
+    if not available_csvs:
+        console.print("[yellow]No available CSV files to process[/yellow]")
+        return
+
+    console.print("\n[bold cyan]Available outputs:[/bold cyan]")
+    for idx, csv_file in enumerate(available_csvs, 1):
+        console.print(f"  {idx}. {csv_file.name}")
+
+    # Ask which file(s) to process
+    choice = Prompt.ask(
+        "\nWhich output do you want to scan for on Spotify? (enter number or 'all')",
+        default="1",
+        show_default=False
+    )
+
+    files_to_process: list[Path] = []
+    if choice.lower() == "all":
+        files_to_process = available_csvs
+    else:
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(available_csvs):
+                files_to_process = [available_csvs[idx]]
+            else:
+                console.print("[red]Invalid selection[/red]")
+                return
+        except ValueError:
+            console.print("[red]Invalid input[/red]")
+            return
+
+    # Process each selected file
+    for csv_file in files_to_process:
+        console.print(f"\n[bold]Processing {csv_file.name}[/bold]")
+
+        # Match with Spotify
+        matched_csv, review_csv, unmatched_csv = match_with_spotify(csv_file)
+
+        # Add to Spotify playlist
+        add_to_spotify_playlist(matched_csv, review_csv)
+
+    console.print("\n[green]All done! Enjoy your playlists![/green]")
