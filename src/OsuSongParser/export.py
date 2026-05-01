@@ -1,5 +1,4 @@
 import csv
-import json
 from dataclasses import asdict
 from pathlib import Path
 
@@ -28,12 +27,6 @@ def export_songs_csv(songs: list[OsuSong], path: Path) -> None:
         writer.writeheader()
         for song in songs:
             writer.writerow(asdict(song))
-
-
-def export_songs_json(songs: list[OsuSong], path: Path) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w", encoding="utf-8") as f:
-        json.dump([asdict(s) for s in songs], f, ensure_ascii=False, indent=2)
 
 
 def _write_spotify_rows(

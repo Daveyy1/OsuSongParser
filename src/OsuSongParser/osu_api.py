@@ -49,9 +49,6 @@ class OsuApiClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_user(self, user: str, mode: str = "osu") -> dict:
-        return self._get(f"/users/{user}/{mode}")
-
     def get_scores(
         self,
         user: str,

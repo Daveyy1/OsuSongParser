@@ -12,6 +12,8 @@ _api_call_count = 0
 class SpotifyRateLimiter:
     """
     Rate limiter using a sliding 30-second window to prevent hitting Spotify's API limits.
+    This is because Spotify doesnt use a strict rate limit, but has varying limits in a sliding 30-second window.
+    Requests cannot surpass this individual rate limit during each 30 second window.
     Enforces both:
     1. Maximum requests per window (e.g., 30 requests per 30 seconds)
     2. Minimum spacing between requests (e.g., 1 second between consecutive requests)
@@ -55,14 +57,6 @@ class SpotifyRateLimiter:
 
         # Record this request timestamp
         self.timestamps.append(time.time())
-
-    def get_current_rate(self) -> tuple[int, int]:
-        """Returns (requests_in_window, max_requests) for monitoring."""
-        now = time.time()
-        # Clean up old timestamps
-        while self.timestamps and self.timestamps[0] < now - self.window:
-            self.timestamps.popleft()
-        return (len(self.timestamps), self.max_requests)
 
 
 # Global rate limiter instance (will be initialized with config value)
@@ -178,14 +172,6 @@ def get_playlist_track_uris(sp: Spotify, playlist_id: str) -> set[str]:
         if page["next"] is None:
             return uris
         offset += len(page["items"])
-
-
-def add_tracks(sp: Spotify, playlist_id: str, uris: list[str]) -> None:
-    """Add tracks to a playlist one at a time, respecting the configured rate limit."""
-    rate_limiter = _get_rate_limiter()
-    for uri in uris:
-        rate_limiter.wait_if_needed()
-        sp.playlist_add_items(playlist_id, [uri])
 
 
 def get_api_call_count() -> int:

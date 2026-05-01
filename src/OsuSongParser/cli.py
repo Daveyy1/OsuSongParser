@@ -1,31 +1,94 @@
+import csv
+import json
+import sys
 from pathlib import Path
 from typing import Optional
-import sys
 
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
+from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
 
+from OsuSongParser import config
 from OsuSongParser.export import (
     export_matches_csv,
     export_review_csv,
     export_songs_csv,
-    export_songs_json,
     export_unmatched_csv,
 )
-from OsuSongParser.local_osu import scan_local as _scan, scan_lazer_files as _scan_lazer
+from OsuSongParser.local_osu import _parse_osu_file, _build_song, _dedup_key
 from OsuSongParser.matching import match_songs, song_key
-from OsuSongParser.models import OsuSong
+from OsuSongParser.models import OsuSong, SpotifyMatch
 from OsuSongParser.osu_api import (
-    BEATMAPSET_TYPES,
     SCORE_API_CAPS,
     OsuApiClient,
     songs_from_beatmapsets,
     songs_from_most_played,
     songs_from_scores,
 )
-from OsuSongParser.spotify_api import get_client, get_api_call_count, reset_api_call_count
+from OsuSongParser.spotify_api import (
+    get_client,
+    get_api_call_count,
+    reset_api_call_count,
+    get_or_create_playlist,
+    get_playlist_track_uris,
+    _get_rate_limiter,
+)
 
 console = Console()
+
+
+def _scan_files_with_progress(
+    files: list[Path],
+    description: str,
+    use_try_except: bool = False
+) -> list[OsuSong]:
+    """
+    Scan osu files with a progress bar and return unique songs.
+
+    Args:
+        files: List of file paths to scan
+        description: Description to show in progress bar
+        use_try_except: If True, wrap parsing in try-except to skip unparseable files
+
+    Returns:
+        List of unique OsuSong objects
+    """
+    seen: set[str] = set()
+    songs: list[OsuSong] = []
+
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        console=console,
+        refresh_per_second=10,
+    ) as progress:
+        task = progress.add_task(description, total=len(files))
+        for file_path in files:
+            if use_try_except:
+                try:
+                    fields = _parse_osu_file(file_path)
+                    song = _build_song(fields)
+                    if song is not None:
+                        key = _dedup_key(song)
+                        if key not in seen:
+                            seen.add(key)
+                            songs.append(song)
+                except Exception:
+                    # Skip files that can't be parsed
+                    pass
+            else:
+                fields = _parse_osu_file(file_path)
+                song = _build_song(fields)
+                if song is not None:
+                    key = _dedup_key(song)
+                    if key not in seen:
+                        seen.add(key)
+                        songs.append(song)
+            progress.advance(task)
+
+    return songs
 
 
 def scan_local_stable() -> Path:
@@ -50,30 +113,7 @@ def scan_local_stable() -> Path:
     console.print(f"Found {total_files} .osu files. Scanning...")
 
     # Scan with progress bar
-    from OsuSongParser.local_osu import _parse_osu_file, _build_song, _dedup_key
-    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
-
-    seen: set[str] = set()
-    songs: list[OsuSong] = []
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,
-    ) as progress:
-        task = progress.add_task("Scanning beatmaps...", total=total_files)
-        for osu_file in sorted(osu_files):
-            fields = _parse_osu_file(osu_file)
-            song = _build_song(fields)
-            if song is not None:
-                key = _dedup_key(song)
-                if key not in seen:
-                    seen.add(key)
-                    songs.append(song)
-            progress.advance(task)
+    songs = _scan_files_with_progress(sorted(osu_files), "Scanning beatmaps...", use_try_except=False)
 
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
@@ -116,34 +156,7 @@ def scan_local_lazer() -> Path:
     console.print("[yellow]Note:[/yellow] This may take a while as it scans hashed files...")
 
     # Scan with progress bar
-    from OsuSongParser.local_osu import _parse_osu_file, _build_song, _dedup_key
-    from rich.progress import Progress, SpinnerColumn, BarColumn, MofNCompleteColumn, TextColumn
-
-    seen: set[str] = set()
-    songs: list[OsuSong] = []
-
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        MofNCompleteColumn(),
-        console=console,
-        refresh_per_second=10,
-    ) as progress:
-        task = progress.add_task("Scanning lazer files...", total=total_files)
-        for file_path in all_files:
-            try:
-                fields = _parse_osu_file(file_path)
-                song = _build_song(fields)
-                if song is not None:
-                    key = _dedup_key(song)
-                    if key not in seen:
-                        seen.add(key)
-                        songs.append(song)
-            except Exception:
-                # Skip files that can't be parsed
-                pass
-            progress.advance(task)
+    songs = _scan_files_with_progress(all_files, "Scanning lazer files...", use_try_except=True)
 
     console.print(f"Found [green]{len(songs)}[/green] unique beatmapsets.")
 
@@ -157,8 +170,6 @@ def scan_local_lazer() -> Path:
 
 def fetch_from_osu_api(type_: str) -> Path:
     """Fetch osu! activity from the API and export to CSV."""
-    from OsuSongParser import config
-
     console.print(f"\n[bold cyan]Fetching {type_} from osu! API[/bold cyan]")
 
     if not config.OSU_CLIENT_ID or not config.OSU_CLIENT_SECRET:
@@ -225,10 +236,6 @@ def fetch_from_osu_api(type_: str) -> Path:
 def match_with_spotify(input_: Path) -> tuple[Path, Path, Path]:
     """Match osu! songs against Spotify and produce matched/review/unmatched CSVs."""
     console.print(f"\n[bold cyan]Matching songs with Spotify[/bold cyan]")
-    import csv
-    import json
-    from OsuSongParser import config
-    from OsuSongParser.models import SpotifyMatch
 
     # Generate output file paths based on input file name
     input_stem = input_.stem
@@ -377,13 +384,6 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
     """Create a Spotify playlist from matched and/or review songs."""
     console.print(f"\n[bold cyan]Adding songs to Spotify playlist[/bold cyan]")
     private = True
-    import csv as _csv
-    from OsuSongParser import config
-    from OsuSongParser.spotify_api import (
-        get_or_create_playlist as _get_or_create_playlist,
-        get_playlist_track_uris as _get_playlist_track_uris,
-        add_tracks as _add_tracks,
-    )
 
     if not matches and not review:
         console.print("[red]Error:[/red] provide at least one matched/review CSV file")
@@ -398,7 +398,7 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
         uris: list[str] = []
         source = ""
         with path.open(encoding="utf-8") as f:
-            for row in _csv.DictReader(f):
+            for row in csv.DictReader(f):
                 uri = row.get("spotify_uri", "").strip()
                 if uri:
                     uris.append(uri)
@@ -432,13 +432,13 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
 
     try:
         sp = get_client(config.SPOTIPY_CLIENT_ID, config.SPOTIPY_CLIENT_SECRET, config.SPOTIPY_REDIRECT_URI)
-        playlist_id, created = _get_or_create_playlist(sp, playlist_name, public=not private)
+        playlist_id, created = get_or_create_playlist(sp, playlist_name, public=not private)
         if created:
             console.print(f"Created new playlist [cyan]{playlist_name}[/cyan].")
             new_uris = unique_uris
         else:
             console.print(f"Found existing playlist [cyan]{playlist_name}[/cyan] — checking for duplicates ...")
-            existing = _get_playlist_track_uris(sp, playlist_id)
+            existing = get_playlist_track_uris(sp, playlist_id)
             new_uris = [u for u in unique_uris if u not in existing]
             skipped = len(unique_uris) - len(new_uris)
             if skipped:
@@ -446,8 +446,6 @@ def add_to_spotify_playlist(matches: Optional[Path], review: Optional[Path]) -> 
         if not new_uris:
             console.print("[yellow]No new tracks to add.[/yellow]")
             return
-
-        from OsuSongParser.spotify_api import _get_rate_limiter
 
         rate_limiter = _get_rate_limiter()
 

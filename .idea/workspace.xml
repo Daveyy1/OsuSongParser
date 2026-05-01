@@ -4,13 +4,19 @@
     <option name="autoReloadType" value="ALL" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="changed cli again to have a smoother use experience, not having to scan songs at first but can scan, match or add to spotify directly.">
+    <list default="true" id="ca8bfa3e-48af-43cd-932f-15bcbf46b2cd" name="Changes" comment="finalized api calling limiter, changeable via .env file.&#10;The exports folder is now more structured, splitting the scans and the spotify matches, and splitting the spotify matches into matched, unmatched and review folders.&#10;cli now has a working process to show how many songs have been matched against spotify or added to a playlist.">
       <change beforePath="$PROJECT_DIR$/.cache" beforeDir="false" afterPath="$PROJECT_DIR$/.cache" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.env.example" beforeDir="false" afterPath="$PROJECT_DIR$/.env.example" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/OsuSongParser/cli.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/cli.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/OsuSongParser/config.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/config.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/OsuSongParser/export.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/export.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/OsuSongParser/local_osu.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/local_osu.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/OsuSongParser/osu_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/osu_api.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/OsuSongParser/spotify_api.py" beforeDir="false" afterPath="$PROJECT_DIR$/src/OsuSongParser/spotify_api.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/__init__.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_local_osu.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_matching.py" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/tests/test_normalize.py" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -18,7 +24,7 @@
     <option name="LAST_RESOLUTION" value="IGNORE" />
   </component>
   <component name="EmbeddingIndexingInfo">
-    <option name="cachedIndexableFilesCount" value="38" />
+    <option name="cachedIndexableFilesCount" value="45" />
     <option name="fileBasedEmbeddingIndicesEnabled" value="true" />
   </component>
   <component name="Git.Settings">
@@ -53,32 +59,32 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "ASKED_MARK_IGNORED_FILES_AS_EXCLUDED": "true",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Python.OsuSongParser.__main__.executor": "Run",
-    "Python.__main__.executor": "Run",
-    "RunOnceActivity.MCP Project settings loaded": "true",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "RunOnceActivity.typescript.service.memoryLimit.init": "true",
-    "ai.playground.ignore.import.keys.banner.in.settings": "true",
-    "codeWithMe.voiceChat.enabledByDefault": "false",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "git-widget-placeholder": "master",
-    "junie.onboarding.icon.badge.shown": "true",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "npm",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "to.speed.mode.migration.done": "true",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;ASKED_MARK_IGNORED_FILES_AS_EXCLUDED&quot;: &quot;true&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Python.OsuSongParser.__main__.executor&quot;: &quot;Run&quot;,
+    &quot;Python.__main__.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.MCP Project settings loaded&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.typescript.service.memoryLimit.init&quot;: &quot;true&quot;,
+    &quot;ai.playground.ignore.import.keys.banner.in.settings&quot;: &quot;true&quot;,
+    &quot;codeWithMe.voiceChat.enabledByDefault&quot;: &quot;false&quot;,
+    &quot;com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;master&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;npm&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
-}]]></component>
+}</component>
   <component name="RunManager">
     <configuration name="OsuSongParser.__main__" type="PythonConfigurationType" factoryName="Python" nameIsGenerated="true">
       <module name="OsuSongParser" />
@@ -126,7 +132,8 @@
       <workItem from="1777452844067" duration="10797000" />
       <workItem from="1777477656801" duration="149000" />
       <workItem from="1777477849823" duration="7105000" />
-      <workItem from="1777544432405" duration="8753000" />
+      <workItem from="1777544432405" duration="9437000" />
+      <workItem from="1777622996260" duration="2767000" />
     </task>
     <task id="LOCAL-00001" summary="Initialize Project: Create files and necessary directories">
       <option name="closed" value="true" />
@@ -224,7 +231,15 @@
       <option name="project" value="LOCAL" />
       <updated>1777557548309</updated>
     </task>
-    <option name="localTasksCounter" value="13" />
+    <task id="LOCAL-00013" summary="finalized api calling limiter, changeable via .env file.&#10;The exports folder is now more structured, splitting the scans and the spotify matches, and splitting the spotify matches into matched, unmatched and review folders.&#10;cli now has a working process to show how many songs have been matched against spotify or added to a playlist.">
+      <option name="closed" value="true" />
+      <created>1777572782136</created>
+      <option name="number" value="00013" />
+      <option name="presentableId" value="LOCAL-00013" />
+      <option name="project" value="LOCAL" />
+      <updated>1777572782136</updated>
+    </task>
+    <option name="localTasksCounter" value="14" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -243,10 +258,11 @@
     <MESSAGE value="improved spotify api calling to reduce requests" />
     <MESSAGE value="changed the cli such that a user is walked through his choices instead of having to run a cli command." />
     <MESSAGE value="changed cli again to have a smoother use experience, not having to scan songs at first but can scan, match or add to spotify directly." />
-    <option name="LAST_COMMIT_MESSAGE" value="changed cli again to have a smoother use experience, not having to scan songs at first but can scan, match or add to spotify directly." />
+    <MESSAGE value="finalized api calling limiter, changeable via .env file.&#10;The exports folder is now more structured, splitting the scans and the spotify matches, and splitting the spotify matches into matched, unmatched and review folders.&#10;cli now has a working process to show how many songs have been matched against spotify or added to a playlist." />
+    <option name="LAST_COMMIT_MESSAGE" value="finalized api calling limiter, changeable via .env file.&#10;The exports folder is now more structured, splitting the scans and the spotify matches, and splitting the spotify matches into matched, unmatched and review folders.&#10;cli now has a working process to show how many songs have been matched against spotify or added to a playlist." />
   </component>
   <component name="com.intellij.coverage.CoverageDataManagerImpl">
-    <SUITE FILE_PATH="coverage/OsuSongParser$OsuSongParser___main__.coverage" NAME="OsuSongParser.__main__ Coverage Results" MODIFIED="1777572468635" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
+    <SUITE FILE_PATH="coverage/OsuSongParser$OsuSongParser___main__.coverage" NAME="OsuSongParser.__main__ Coverage Results" MODIFIED="1777624328047" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="" />
     <SUITE FILE_PATH="coverage/OsuSongParser$__main__.coverage" NAME="__main__ Coverage Results" MODIFIED="1777545100540" SOURCE_PROVIDER="com.intellij.coverage.DefaultCoverageFileProvider" RUNNER="coverage.py" COVERAGE_BY_TEST_ENABLED="false" COVERAGE_TRACING_ENABLED="false" WORKING_DIRECTORY="$PROJECT_DIR$/src/OsuSongParser" />
   </component>
 </project>
